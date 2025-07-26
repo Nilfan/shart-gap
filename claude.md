@@ -61,6 +61,27 @@ In the middle of page is a chat area where users can chat with each other, messa
     - Modified frontend to use new party-focused API endpoints
     - Party data now exists only in memory during active session
 
+## Change Log
+
+### 2025-01-26 Windows Setup Improvements
+- **Fixed Windows ICO icon issue**: Resolved "icon.ico not found" and "not in 3.00 format" errors by creating proper ICO file from PNG using online converter
+- **Created Windows-specific build infrastructure**:
+  - Created `windows/` folder for Windows-specific files
+  - Moved PowerShell build script to `windows/build.ps1`
+  - Created comprehensive `windows/README.md` with Windows setup guide
+- **Enhanced PowerShell build script (`windows/build.ps1`)**:
+  - Prerequisites checking (Rust, Node.js, Tauri CLI, ICO file)
+  - Automatic dependency installation
+  - Multiple build modes: Development, Production, Clean
+  - Colored output with emojis and error handling
+  - Help system with usage instructions
+- **Reorganized documentation structure**:
+  - Removed Windows-specific details from root README.md
+  - Added clear links to Windows setup guide throughout root README
+  - Streamlined root README for cross-platform clarity
+  - Updated build commands to reference `.\windows\build.ps1`
+- **Working Windows development environment**: Successfully resolved all Windows compilation issues and created automated build process
+
 ## Implementation Status
 
 ### ✅ Completed Features
