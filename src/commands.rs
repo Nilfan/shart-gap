@@ -278,6 +278,14 @@ pub async fn get_ping_stats(
 }
 
 #[tauri::command]
+pub async fn get_user_ip() -> Result<String, String> {
+    match local_ip_address::local_ip() {
+        Ok(ip) => Ok(ip.to_string()),
+        Err(e) => Err(format!("Failed to get local IP: {}", e)),
+    }
+}
+
+#[tauri::command]
 pub async fn change_protocol(
     state: State<'_, AppState>,
     new_protocol: Protocol,

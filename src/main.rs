@@ -57,7 +57,8 @@ async fn main() {
             commands::check_room_health,
             commands::mark_user_offline_cmd,
             commands::join_call,
-            commands::leave_call
+            commands::leave_call,
+            commands::get_user_ip
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

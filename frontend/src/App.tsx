@@ -51,6 +51,7 @@ function App() {
   const [inviteCode, setInviteCode] = useState('')
   const [isMuted, setIsMuted] = useState(false)
   const [isInCall, setIsInCall] = useState(false)
+  const [userIP, setUserIP] = useState<string>('')
 
   useEffect(() => {
     // Check for saved name on app start
@@ -58,6 +59,18 @@ function App() {
     if (savedName) {
       initializeUser(savedName)
     }
+    
+    // Get user IP address
+    const fetchUserIP = async () => {
+      try {
+        const ip = await invoke<string>('get_user_ip')
+        setUserIP(ip)
+      } catch (error) {
+        console.error('Failed to get user IP:', error)
+      }
+    }
+    
+    fetchUserIP()
   }, [])
 
   const initializeUser = async (name: string) => {
@@ -202,6 +215,16 @@ function App() {
   if (!isUserInitialized) {
     return (
       <div className={styles.app}>
+        <div className={styles.topBar}>
+          <div className={styles.userInfo}>
+            {userIP && <span className={styles.ipInfo}>IP: {userIP}</span>}
+          </div>
+          <div className={styles.topBarActions}>
+            <button onClick={() => setShowSettings(true)} className={styles.settingsButton}>
+              Settings
+            </button>
+          </div>
+        </div>
         <div className={styles.nameScreen}>
           <h2>Welcome to ShortGap</h2>
           <p>Enter your name to continue</p>
@@ -218,6 +241,13 @@ function App() {
             </button>
           </div>
         </div>
+        {showSettings && (
+          <Settings
+            currentUser={null}
+            onSave={handleSaveSettings}
+            onCancel={() => setShowSettings(false)}
+          />
+        )}
       </div>
     )
   }
@@ -228,6 +258,7 @@ function App() {
       <div className={styles.topBar}>
         <div className={styles.userInfo}>
           <span>{currentUser?.name}</span>
+          {userIP && <span className={styles.ipInfo}>IP: {userIP}</span>}
         </div>
         <div className={styles.topBarActions}>
           {currentParty && (
@@ -278,6 +309,9 @@ function App() {
                 </button>
                 <button className={styles.partyButton} onClick={() => setShowJoinModal(true)}>
                   Join a party
+                </button>
+                <button className={styles.settingsButton} onClick={() => setShowSettings(true)}>
+                  Settings
                 </button>
               </div>
             </div>

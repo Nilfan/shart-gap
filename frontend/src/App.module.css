@@ -16,10 +16,22 @@
   border-bottom: 1px solid #202225;
 }
 
+.userInfo {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
 .userInfo span {
   color: #ffffff;
   font-weight: 600;
   font-size: 16px;
+}
+
+.ipInfo {
+  color: #b9bbbe !important;
+  font-weight: 400 !important;
+  font-size: 14px !important;
 }
 
 .topBarActions {
@@ -261,4 +273,22 @@
 
 .modalButtons button:last-child:hover {
   background-color: #484c52;
+}
+
+.settingsButton {
+  background-color: #40444b;
+  color: #dcddde;
+  border: none;
+  padding: 12px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 500;
+  transition: all 0.2s;
+  min-width: 120px;
+}
+
+.settingsButton:hover {
+  background-color: #484c52;
+  transform: translateY(-1px);
 }
