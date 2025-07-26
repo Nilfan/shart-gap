@@ -175,7 +175,25 @@ impl NetworkManager {
     async fn connect_tcp(&mut self, addr: SocketAddr) -> Result<()> {
         println!("🔗 Connecting to TCP peer at {}", addr);
         
-        let stream = TcpStream::connect(addr).await?;
+        // Add timeout to connection attempt
+        let connect_future = TcpStream::connect(addr);
+        let timeout_duration = tokio::time::Duration::from_secs(10);
+        
+        let stream = match tokio::time::timeout(timeout_duration, connect_future).await {
+            Ok(Ok(stream)) => {
+                println!("✅ TCP connection established to {}", addr);
+                stream
+            }
+            Ok(Err(e)) => {
+                println!("❌ TCP connection failed to {}: {}", addr, e);
+                return Err(anyhow::anyhow!("Connection failed: {}", e));
+            }
+            Err(_) => {
+                println!("❌ TCP connection timeout to {} (10s)", addr);
+                return Err(anyhow::anyhow!("Connection timeout after 10 seconds"));
+            }
+        };
+        
         let peer_id = addr.to_string();
         
         // Store the stream
@@ -202,7 +220,7 @@ impl NetworkManager {
             Self::handle_tcp_peer(tcp_streams, message_sender, peer_id).await;
         });
         
-        println!("✅ Connected to TCP peer {}", addr);
+        println!("✅ Connected to TCP peer {} and started message handler", addr);
         Ok(())
     }
 

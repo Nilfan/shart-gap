@@ -52,6 +52,8 @@ function App() {
   const [isMuted, setIsMuted] = useState(false)
   const [isInCall, setIsInCall] = useState(false)
   const [userIP, setUserIP] = useState<string>('')
+  const [isJoining, setIsJoining] = useState(false)
+  const [joinStatus, setJoinStatus] = useState<string>('')
 
   useEffect(() => {
     // Check for saved name on app start
@@ -114,14 +116,35 @@ function App() {
   }
 
   const handleJoinParty = async (inviteCode: string) => {
+    if (!inviteCode.trim()) return
+    
+    setIsJoining(true)
+    setJoinStatus('Validating invite code...')
+    
     try {
+      // First validate the invite
+      const validationResult = await invoke<string>('validate_invite', { inviteCode })
+      console.log('Invite validation:', validationResult)
+      setJoinStatus('Invite valid! Connecting to party...')
+      
+      // Small delay to show validation message
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      
+      // Attempt to join
+      setJoinStatus('Establishing connection...')
       const joinedParty = await invoke<Party>('join_party', { inviteCode })
+      
+      setJoinStatus('Connected! Joining party...')
       setCurrentParty(joinedParty)
       setShowJoinModal(false)
       setInviteCode('')
+      setJoinStatus('')
     } catch (error) {
       console.error('Failed to join party:', error)
+      setJoinStatus('')
       alert(`Failed to join party: ${error}`)
+    } finally {
+      setIsJoining(false)
     }
   }
 
@@ -328,12 +351,32 @@ function App() {
               value={inviteCode}
               onChange={e => setInviteCode(e.target.value)}
               placeholder='Enter invite code'
+              disabled={isJoining}
             />
+            {joinStatus && (
+              <div className={styles.statusMessage}>
+                {joinStatus}
+              </div>
+            )}
             <div className={styles.modalButtons}>
-              <button onClick={() => handleJoinParty(inviteCode)} disabled={!inviteCode.trim()}>
-                Join
+              <button 
+                onClick={() => handleJoinParty(inviteCode)} 
+                disabled={!inviteCode.trim() || isJoining}
+              >
+                {isJoining ? 'Joining...' : 'Join'}
               </button>
-              <button onClick={() => setShowJoinModal(false)}>Cancel</button>
+              <button 
+                onClick={() => {
+                  if (!isJoining) {
+                    setShowJoinModal(false)
+                    setInviteCode('')
+                    setJoinStatus('')
+                  }
+                }}
+                disabled={isJoining}
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>

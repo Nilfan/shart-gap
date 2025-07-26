@@ -87,52 +87,104 @@ pub async fn join_party(
     state: State<'_, AppState>,
     invite_code: String,
 ) -> Result<Room, String> {
+    println!("🔄 Starting party join process...");
+    println!("📝 Invite code received: {}", invite_code);
+    
     // Check if there's already an active party
     let current_party_guard = state.current_party.lock().await;
     if current_party_guard.is_some() {
+        println!("❌ User already in a party");
         return Err("Already in a party. Leave the current party before joining another.".to_string());
     }
     drop(current_party_guard);
 
     // Parse invite code
+    println!("🔍 Parsing invite code...");
     let invite_data = InviteData::parse_invite_code(&invite_code)
-        .map_err(|e| format!("Invalid invite code: {}", e))?;
+        .map_err(|e| {
+            println!("❌ Failed to parse invite code: {}", e);
+            format!("Invalid invite code: {}", e)
+        })?;
+
+    println!("✅ Parsed invite data:");
+    println!("   - Room ID: {}", invite_data.room_id);
+    println!("   - Room Name: {}", invite_data.room_name);
+    println!("   - Creator: {}", invite_data.creator_name);
+    println!("   - Protocol: {:?}", invite_data.protocol);
+    println!("   - Peer addresses: {:?}", invite_data.peer_addresses);
 
     // Check if invite is expired (24 hours)
     if invite_data.is_expired(24) {
+        println!("❌ Invite code has expired");
         return Err("Invite code has expired".to_string());
     }
 
     // Get current user
+    println!("👤 Getting current user...");
     let current_user_guard = state.current_user.lock().await;
     let current_user = current_user_guard.as_ref()
-        .ok_or("No user configured. Please set up your profile first.")?;
+        .ok_or_else(|| {
+            println!("❌ No user configured");
+            "No user configured. Please set up your profile first.".to_string()
+        })?;
     let user_clone = current_user.clone();
+    println!("✅ Current user: {} ({})", user_clone.name, user_clone.address);
     drop(current_user_guard);
 
     // Try to connect to peers in order
+    println!("🌐 Attempting to connect to peers...");
     let mut networking = state.networking.lock().await;
     let mut connected = false;
+    let mut connection_errors = Vec::new();
 
     // Try primary peer first
     if let Some(primary_peer) = invite_data.get_primary_peer() {
-        if let Ok(_) = networking.connect_to_peer(primary_peer, invite_data.protocol.clone()).await {
-            connected = true;
+        println!("🔗 Trying primary peer: {}", primary_peer);
+        match networking.connect_to_peer(primary_peer, invite_data.protocol.clone()).await {
+            Ok(_) => {
+                println!("✅ Connected to primary peer: {}", primary_peer);
+                connected = true;
+            }
+            Err(e) => {
+                let error_msg = format!("Primary peer {} failed: {}", primary_peer, e);
+                println!("❌ {}", error_msg);
+                connection_errors.push(error_msg);
+            }
         }
+    } else {
+        println!("⚠️ No primary peer found in invite");
     }
 
     // Try fallback peers if primary failed
     if !connected {
-        for peer_addr in invite_data.get_fallback_peers() {
-            if let Ok(_) = networking.connect_to_peer(peer_addr, invite_data.protocol.clone()).await {
-                connected = true;
-                break;
+        let fallback_peers = invite_data.get_fallback_peers();
+        println!("🔄 Trying {} fallback peers...", fallback_peers.len());
+        
+        for (i, peer_addr) in fallback_peers.iter().enumerate() {
+            println!("🔗 Trying fallback peer {}/{}: {}", i + 1, fallback_peers.len(), peer_addr);
+            match networking.connect_to_peer(*peer_addr, invite_data.protocol.clone()).await {
+                Ok(_) => {
+                    println!("✅ Connected to fallback peer: {}", peer_addr);
+                    connected = true;
+                    break;
+                }
+                Err(e) => {
+                    let error_msg = format!("Fallback peer {} failed: {}", peer_addr, e);
+                    println!("❌ {}", error_msg);
+                    connection_errors.push(error_msg);
+                }
             }
         }
     }
 
     if !connected {
-        return Err("Could not connect to any peers in the party".to_string());
+        let full_error = format!(
+            "Could not connect to any peers in the party. Tried {} peers. Errors: {}",
+            connection_errors.len(),
+            connection_errors.join("; ")
+        );
+        println!("❌ {}", full_error);
+        return Err(full_error);
     }
 
     // Create party representation (session-based, no persistence)
@@ -343,6 +395,47 @@ pub async fn generate_invite(
 pub async fn parse_invite(invite_code: String) -> Result<InviteData, String> {
     InviteData::parse_invite_code(&invite_code)
         .map_err(|e| format!("Failed to parse invite code: {}", e))
+}
+
+#[tauri::command]
+pub async fn validate_invite(invite_code: String) -> Result<String, String> {
+    println!("🔍 Validating invite code: {}", invite_code);
+    
+    // Parse invite code
+    let invite_data = match InviteData::parse_invite_code(&invite_code) {
+        Ok(data) => data,
+        Err(e) => {
+            let error_msg = format!("Invalid invite format: {}", e);
+            println!("❌ {}", error_msg);
+            return Err(error_msg);
+        }
+    };
+    
+    // Check if expired
+    if invite_data.is_expired(24) {
+        let error_msg = "Invite code has expired (older than 24 hours)".to_string();
+        println!("❌ {}", error_msg);
+        return Err(error_msg);
+    }
+    
+    // Validate peer addresses
+    if invite_data.peer_addresses.is_empty() {
+        let error_msg = "No peer addresses found in invite".to_string();
+        println!("❌ {}", error_msg);
+        return Err(error_msg);
+    }
+    
+    let validation_info = format!(
+        "✅ Valid invite:\n• Party: '{}'\n• Creator: {}\n• Protocol: {:?}\n• Peers: {} available\n• Created: {}",
+        invite_data.room_name,
+        invite_data.creator_name,
+        invite_data.protocol,
+        invite_data.peer_addresses.len(),
+        invite_data.created_at.format("%Y-%m-%d %H:%M UTC")
+    );
+    
+    println!("{}", validation_info);
+    Ok(validation_info)
 }
 
 #[tauri::command]
