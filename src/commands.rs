@@ -136,11 +136,26 @@ pub async fn join_party(
     }
 
     // Create party representation (session-based, no persistence)
-    let mut party = Room::new(invite_data.room_name, user_clone, invite_data.protocol);
+    let mut party = Room::new(invite_data.room_name, user_clone.clone(), invite_data.protocol);
     party.id = invite_data.room_id;
     party.peer_addresses = invite_data.peer_addresses;
 
     println!("✅ Joined party '{}' with ID: {}", party.name, party.id);
+
+    // Send UserJoined message to notify other peers
+    let networking = state.networking.lock().await;
+    let join_message = crate::networking::NetworkMessage {
+        id: Uuid::new_v4(),
+        from: user_clone.id.to_string(),
+        to: None,
+        message_type: crate::networking::MessageType::UserJoined,
+        payload: serde_json::to_value(&user_clone).map_err(|e| e.to_string())?,
+        timestamp: chrono::Utc::now(),
+    };
+
+    if let Err(e) = networking.broadcast_message(join_message).await {
+        eprintln!("Failed to broadcast user joined message: {}", e);
+    }
 
     // Set as current party
     let mut current_party = state.current_party.lock().await;
@@ -204,6 +219,7 @@ pub async fn send_message(
         
         println!("✅ Message added to party '{}' (ID: {})", party.name, party.id);
         println!("📁 Party '{}' now has {} messages", party.name, party.messages.len());
+        println!("💬 [{}] {}: {}", message.timestamp.format("%H:%M:%S"), message.user_name, message.content);
 
         // Send message to other peers in the party
         let networking = state.networking.lock().await;
@@ -524,7 +540,7 @@ mod tests {
 
     async fn create_test_app_state() -> AppState {
         AppState {
-            rooms: Arc::new(Mutex::new(Vec::new())),
+            current_party: Arc::new(Mutex::new(None)),
             current_user: Arc::new(Mutex::new(None)),
             networking: Arc::new(Mutex::new(crate::networking::NetworkManager::new())),
         }
@@ -549,15 +565,15 @@ mod tests {
         
         // Add room to state
         {
-            let mut rooms = state.current_party.lock().await;
-            rooms.push(room);
+            let mut current_party = state.current_party.lock().await;
+            *current_party = Some(room);
         }
         
         println!("🧪 Testing generate_invite command with room ID: {}", room_id);
         
         // Test the invite generation logic directly
-        let rooms = state.current_party.lock().await;
-        let room = rooms.iter().find(|r| r.id.to_string() == room_id).unwrap();
+        let current_party = state.current_party.lock().await;
+        let room = current_party.as_ref().unwrap();
         let current_user_guard = state.current_user.lock().await;
         let current_user = current_user_guard.as_ref().unwrap();
 
@@ -631,13 +647,13 @@ mod tests {
         room.peer_addresses = vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 47)), 8080)];
         
         {
-            let mut rooms = state.current_party.lock().await;
-            rooms.push(room);
+            let mut current_party = state.current_party.lock().await;
+            *current_party = Some(room);
         }
         
         // Test the invite generation logic directly
-        let rooms = state.current_party.lock().await;
-        let room = rooms.iter().find(|r| r.id.to_string() == existing_room_id).unwrap();
+        let current_party = state.current_party.lock().await;
+        let room = current_party.as_ref().unwrap();
         let current_user_guard = state.current_user.lock().await;
         let current_user = current_user_guard.as_ref().unwrap();
 

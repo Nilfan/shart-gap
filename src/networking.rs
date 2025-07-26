@@ -2,8 +2,12 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use tokio::sync::mpsc;
+use tokio::net::{TcpListener, TcpStream};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use uuid::Uuid;
 use anyhow::Result;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Protocol {
@@ -50,6 +54,8 @@ pub struct NetworkManager {
     pub current_protocol: Protocol,
     pub is_server: bool,
     pub server_peer: Option<String>,
+    pub tcp_streams: Arc<Mutex<HashMap<String, TcpStream>>>,
+    pub server_handle: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl NetworkManager {
@@ -62,6 +68,8 @@ impl NetworkManager {
             current_protocol: Protocol::TCP,
             is_server: false,
             server_peer: None,
+            tcp_streams: Arc::new(Mutex::new(HashMap::new())),
+            server_handle: None,
         }
     }
 
@@ -113,8 +121,44 @@ impl NetworkManager {
         Ok(())
     }
 
-    async fn start_tcp_server(&mut self, _port: u16) -> Result<()> {
-        // TCP server implementation
+    async fn start_tcp_server(&mut self, port: u16) -> Result<()> {
+        let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
+        let tcp_streams = Arc::clone(&self.tcp_streams);
+        let message_sender = self.message_sender.as_ref().unwrap().clone();
+        
+        println!("🌐 TCP server started on port {}", port);
+        
+        let handle = tokio::spawn(async move {
+            loop {
+                match listener.accept().await {
+                    Ok((stream, addr)) => {
+                        println!("📞 NEW USER CONNECTION from {}", addr);
+                        println!("🔗 Connection established with peer: {}", addr);
+                        
+                        let peer_id = addr.to_string();
+                        {
+                            let mut streams = tcp_streams.lock().await;
+                            streams.insert(peer_id.clone(), stream);
+                            println!("📝 Total active connections: {}", streams.len());
+                        }
+                        
+                        // Handle incoming messages from this peer
+                        let tcp_streams_clone = Arc::clone(&tcp_streams);
+                        let sender_clone = message_sender.clone();
+                        let peer_id_clone = peer_id.clone();
+                        
+                        tokio::spawn(async move {
+                            Self::handle_tcp_peer(tcp_streams_clone, sender_clone, peer_id_clone).await;
+                        });
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to accept TCP connection: {}", e);
+                    }
+                }
+            }
+        });
+        
+        self.server_handle = Some(handle);
         Ok(())
     }
 
@@ -128,8 +172,37 @@ impl NetworkManager {
         Ok(())
     }
 
-    async fn connect_tcp(&mut self, _addr: SocketAddr) -> Result<()> {
-        // TCP client implementation
+    async fn connect_tcp(&mut self, addr: SocketAddr) -> Result<()> {
+        println!("🔗 Connecting to TCP peer at {}", addr);
+        
+        let stream = TcpStream::connect(addr).await?;
+        let peer_id = addr.to_string();
+        
+        // Store the stream
+        {
+            let mut streams = self.tcp_streams.lock().await;
+            streams.insert(peer_id.clone(), stream);
+        }
+        
+        // Update connection info
+        let connection = PeerConnection {
+            addr,
+            protocol: Protocol::TCP,
+            is_server: false,
+            ping_ms: None,
+            last_seen: chrono::Utc::now(),
+        };
+        self.connections.insert(peer_id.clone(), connection);
+        
+        // Start handling messages from this peer
+        let tcp_streams = Arc::clone(&self.tcp_streams);
+        let message_sender = self.message_sender.as_ref().unwrap().clone();
+        
+        tokio::spawn(async move {
+            Self::handle_tcp_peer(tcp_streams, message_sender, peer_id).await;
+        });
+        
+        println!("✅ Connected to TCP peer {}", addr);
         Ok(())
     }
 
@@ -143,14 +216,113 @@ impl NetworkManager {
         Ok(())
     }
 
-    pub async fn broadcast_message(&self, _message: NetworkMessage) -> Result<()> {
-        // Broadcast to all connected peers
+    pub async fn broadcast_message(&self, message: NetworkMessage) -> Result<()> {
+        let serialized = serde_json::to_string(&message)?;
+        let message_bytes = serialized.as_bytes();
+        let length = message_bytes.len() as u32;
+        
+        println!("📡 Broadcasting message type {:?} to {} peers", message.message_type, self.connections.len());
+        
+        // Log the message content if it's a chat message
+        if matches!(message.message_type, MessageType::ChatMessage) {
+            if let Ok(chat_message) = serde_json::from_value::<crate::room::ChatMessage>(message.payload.clone()) {
+                println!("📤 Sending chat message: [{}] {}: {}", 
+                    chat_message.timestamp.format("%H:%M:%S"), 
+                    chat_message.user_name, 
+                    chat_message.content);
+            }
+        }
+        
+        // Collect peer IDs first to avoid borrow conflicts
+        let peer_ids: Vec<String> = {
+            let streams = self.tcp_streams.lock().await;
+            streams.keys().cloned().collect()
+        };
+        
+        for peer_id in peer_ids {
+            // Send message to each peer individually
+            if let Err(e) = self.send_to_peer(&peer_id, message.clone()).await {
+                eprintln!("❌ Failed to send message to peer {}: {}", peer_id, e);
+            }
+        }
+        
         Ok(())
     }
+    
+    async fn handle_tcp_peer(
+        tcp_streams: Arc<Mutex<HashMap<String, TcpStream>>>,
+        message_sender: mpsc::UnboundedSender<NetworkMessage>,
+        peer_id: String,
+    ) {
+        let mut stream = {
+            let mut streams = tcp_streams.lock().await;
+            if let Some(stream) = streams.remove(&peer_id) {
+                stream
+            } else {
+                return;
+            }
+        };
+        
+        println!("🎧 Started listening for messages from peer {}", peer_id);
+        
+        loop {
+            // Read message length
+            match stream.read_u32().await {
+                Ok(length) => {
+                    // Read message data
+                    let mut buffer = vec![0u8; length as usize];
+                    match stream.read_exact(&mut buffer).await {
+                        Ok(_) => {
+                            match String::from_utf8(buffer) {
+                                Ok(json_str) => {
+                                    match serde_json::from_str::<NetworkMessage>(&json_str) {
+                                        Ok(message) => {
+                                            println!("📨 Received message from {}: {:?}", peer_id, message.message_type);
+                                            if let Err(_) = message_sender.send(message) {
+                                                eprintln!("❌ Failed to forward message from peer {}", peer_id);
+                                                break;
+                                            }
+                                        }
+                                        Err(e) => {
+                                            eprintln!("❌ Failed to parse message from peer {}: {}", peer_id, e);
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    eprintln!("❌ Invalid UTF-8 from peer {}: {}", peer_id, e);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("❌ Failed to read message from peer {}: {}", peer_id, e);
+                            break;
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("📴 Peer {} disconnected: {}", peer_id, e);
+                    break;
+                }
+            }
+        }
+        
+        println!("👋 Stopped listening to peer {}", peer_id);
+    }
 
-    pub async fn send_to_peer(&self, _peer_id: &str, _message: NetworkMessage) -> Result<()> {
-        // Send to specific peer
-        Ok(())
+    pub async fn send_to_peer(&self, peer_id: &str, message: NetworkMessage) -> Result<()> {
+        let serialized = serde_json::to_string(&message)?;
+        let message_bytes = serialized.as_bytes();
+        let length = message_bytes.len() as u32;
+        
+        let mut streams = self.tcp_streams.lock().await;
+        if let Some(stream) = streams.get_mut(peer_id) {
+            stream.write_u32(length).await?;
+            stream.write_all(message_bytes).await?;
+            println!("✅ Sent message to peer {}", peer_id);
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("Peer {} not found", peer_id))
+        }
     }
 
     pub fn get_peer_list(&self) -> Vec<(String, PeerConnection)> {
