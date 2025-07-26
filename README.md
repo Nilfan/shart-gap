@@ -18,6 +18,8 @@ A Discord-like local messenger application built with Rust and React, featuring 
 - Node.js 18+
 - npm or yarn
 
+**Windows Users**: See [Windows Setup Guide](windows/README.md) for detailed setup instructions.
+
 ### Installation
 
 1. Clone the repository:
@@ -26,26 +28,43 @@ git clone <your-repo-url>
 cd ShortGap
 ```
 
-2. Install frontend dependencies:
+2. Install Tauri CLI:
+```bash
+cargo install tauri-cli
+```
+
+3. Install frontend dependencies:
 ```bash
 cd frontend
 npm install
 cd ..
 ```
 
-3. Run the development version with embedded frontend:
+4. **Windows Users**: See [Windows Setup Guide](windows/README.md) for detailed instructions including ICO file creation and PowerShell build script.
+
+5. Run the development version:
 ```bash
+# Linux/macOS:
 ./dev.sh
-# OR manually:
-cd frontend && npm run build && cd .. && cargo run
+
+# Windows:
+.\windows\build.ps1
+
+# Manual:
+cd frontend && npm run build && cd .. && cargo tauri dev
 ```
 
 ### Building for Production
 
 ```bash
+# Linux/macOS:
 ./build.sh
-# OR manually:
-cd frontend && npm run build && cd .. && cargo build --release
+
+# Windows:
+.\windows\build.ps1 -Release
+
+# Manual:
+cd frontend && npm run build && cd .. && cargo tauri build
 ```
 
 ## Architecture
@@ -128,10 +147,21 @@ frontend/src/      # React frontend
 
 [Your License Here]
 
+## Troubleshooting
+
+### Windows Users
+See the [Windows Setup Guide](windows/README.md) for comprehensive Windows-specific troubleshooting.
+
+### Common Issues (All Platforms)
+
+- **Rust compilation errors**: Ensure latest stable Rust version
+- **Network issues**: Check firewall settings for peer-to-peer connections
+- **Audio device problems**: Check Settings → Audio devices
+
 ## Future Enhancements
 
 - End-to-end encryption
 - File sharing capabilities
 - Mobile app versions
 - Advanced voice features (noise cancellation, etc.)
-- Plugin system for extensions# shart-gap
+- Plugin system for extensions

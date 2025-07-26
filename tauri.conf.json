@@ -23,9 +23,7 @@
       "active": true,
       "targets": "all",
       "identifier": "com.shortgap.app",
-      "icon": [
-        "icons/icon.png"
-      ]
+      "icon": ["icons/icon.png"]
     },
     "security": {
       "csp": null
