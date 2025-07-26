@@ -34,21 +34,21 @@ function Settings({ currentUser, onSave, onCancel }: SettingsProps) {
     try {
       // Request microphone permission
       await navigator.mediaDevices.getUserMedia({ audio: true })
-      
+
       const devices = await navigator.mediaDevices.enumerateDevices()
-      
+
       const audioInputs = devices
         .filter(device => device.kind === 'audioinput')
         .map(device => ({
           deviceId: device.deviceId,
-          label: device.label || `Microphone ${device.deviceId.slice(0, 8)}`
+          label: device.label || `Microphone ${device.deviceId.slice(0, 8)}`,
         }))
-      
+
       const audioOutputs = devices
         .filter(device => device.kind === 'audiooutput')
         .map(device => ({
           deviceId: device.deviceId,
-          label: device.label || `Speaker ${device.deviceId.slice(0, 8)}`
+          label: device.label || `Speaker ${device.deviceId.slice(0, 8)}`,
         }))
 
       setInputDevices(audioInputs)
@@ -63,12 +63,11 @@ function Settings({ currentUser, onSave, onCancel }: SettingsProps) {
       name: userName.trim(),
       avatar: avatar.trim() || null,
       audioInputDevice: selectedInputDevice || null,
-      audioOutputDevice: selectedOutputDevice || null
+      audioOutputDevice: selectedOutputDevice || null,
     }
 
     onSave(settings)
   }
-
 
   return (
     <div className={styles.settingsOverlay}>
@@ -84,39 +83,39 @@ function Settings({ currentUser, onSave, onCancel }: SettingsProps) {
           <div className={styles.section}>
             <h3>User Profile</h3>
             <div className={styles.formGroup}>
-              <label htmlFor="userName">Display Name</label>
+              <label htmlFor='userName'>Display Name</label>
               <input
-                id="userName"
-                type="text"
+                id='userName'
+                type='text'
                 value={userName}
-                onChange={(e) => setUserName(e.target.value)}
-                placeholder="Enter your display name"
+                onChange={e => setUserName(e.target.value)}
+                placeholder='Enter your display name'
               />
             </div>
-            
+
             <div className={styles.formGroup}>
-              <label htmlFor="avatar">Avatar URL (Optional)</label>
+              <label htmlFor='avatar'>Avatar URL (Optional)</label>
               <input
-                id="avatar"
-                type="url"
+                id='avatar'
+                type='url'
                 value={avatar}
-                onChange={(e) => setAvatar(e.target.value)}
-                placeholder="https://example.com/avatar.jpg"
+                onChange={e => setAvatar(e.target.value)}
+                placeholder='https://example.com/avatar.jpg'
               />
             </div>
           </div>
 
           <div className={styles.section}>
             <h3>Audio Settings</h3>
-            
+
             <div className={styles.formGroup}>
-              <label htmlFor="inputDevice">Input Device (Microphone)</label>
+              <label htmlFor='inputDevice'>Input Device (Microphone)</label>
               <select
-                id="inputDevice"
+                id='inputDevice'
                 value={selectedInputDevice}
-                onChange={(e) => setSelectedInputDevice(e.target.value)}
+                onChange={e => setSelectedInputDevice(e.target.value)}
               >
-                <option value="">Default</option>
+                <option value=''>Default</option>
                 {inputDevices.map(device => (
                   <option key={device.deviceId} value={device.deviceId}>
                     {device.label}
@@ -126,13 +125,13 @@ function Settings({ currentUser, onSave, onCancel }: SettingsProps) {
             </div>
 
             <div className={styles.formGroup}>
-              <label htmlFor="outputDevice">Output Device (Speakers)</label>
+              <label htmlFor='outputDevice'>Output Device (Speakers)</label>
               <select
-                id="outputDevice"
+                id='outputDevice'
                 value={selectedOutputDevice}
-                onChange={(e) => setSelectedOutputDevice(e.target.value)}
+                onChange={e => setSelectedOutputDevice(e.target.value)}
               >
-                <option value="">Default</option>
+                <option value=''>Default</option>
                 {outputDevices.map(device => (
                   <option key={device.deviceId} value={device.deviceId}>
                     {device.label}
@@ -142,7 +141,7 @@ function Settings({ currentUser, onSave, onCancel }: SettingsProps) {
             </div>
 
             {/* Voice Check Component */}
-            <VoiceCheck 
+            <VoiceCheck
               selectedInputDevice={selectedInputDevice}
               selectedOutputDevice={selectedOutputDevice}
             />
@@ -153,11 +152,7 @@ function Settings({ currentUser, onSave, onCancel }: SettingsProps) {
           <button className={styles.cancelButton} onClick={onCancel}>
             Cancel
           </button>
-          <button 
-            className={styles.saveButton} 
-            onClick={handleSave}
-            disabled={!userName.trim()}
-          >
+          <button className={styles.saveButton} onClick={handleSave} disabled={!userName.trim()}>
             Save
           </button>
         </div>

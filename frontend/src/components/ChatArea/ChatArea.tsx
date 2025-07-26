@@ -5,10 +5,20 @@ import styles from './ChatArea.module.css'
 interface ChatAreaProps {
   room: Party
   currentUser: User | null
+  isInCall: boolean
+  onJoinCall: () => void
+  onLeaveCall: () => void
   onSendMessage: (content: string) => void
 }
 
-function ChatArea({ room, currentUser, onSendMessage }: ChatAreaProps) {
+function ChatArea({
+  room,
+  currentUser,
+  isInCall,
+  onSendMessage,
+  onJoinCall,
+  onLeaveCall,
+}: ChatAreaProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [messageInput, setMessageInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -39,15 +49,15 @@ function ChatArea({ room, currentUser, onSendMessage }: ChatAreaProps) {
     const date = new Date(timestamp)
     const now = new Date()
     const isToday = date.toDateString() === now.toDateString()
-    
+
     if (isToday) {
       return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     } else {
-      return date.toLocaleDateString([], { 
-        month: 'short', 
+      return date.toLocaleDateString([], {
+        month: 'short',
         day: 'numeric',
-        hour: '2-digit', 
-        minute: '2-digit' 
+        hour: '2-digit',
+        minute: '2-digit',
       })
     }
   }
@@ -59,21 +69,16 @@ function ChatArea({ room, currentUser, onSendMessage }: ChatAreaProps) {
           <h2 className={styles.roomName}>{room.name}</h2>
           <div className={styles.roomMeta}>
             <span className={styles.userCount}>{Object.keys(room.users).length} members</span>
-            <div className={styles.protocolBadge}>
-              Protocol: {room.protocol}
-            </div>
+            <div className={styles.protocolBadge}>Protocol: {room.protocol}</div>
           </div>
         </div>
-        
+
         <div className={styles.headerActions}>
-          <button 
-            className={`${styles.actionButton} ${room.is_voice_enabled ? styles.active : ''}`}
-            title={room.is_voice_enabled ? 'Leave Call' : 'Join Call'}
+          <button
+            className={`${styles.callButton} ${isInCall ? styles.inCall : styles.notInCall}`}
+            onClick={isInCall ? onLeaveCall : onJoinCall}
           >
-            {room.is_voice_enabled ? '🔇' : '🎤'}
-          </button>
-          <button className={styles.actionButton} title="Room Settings">
-            ⚙️
+            {isInCall ? 'Leave call' : 'Join call'}
           </button>
         </div>
       </div>
@@ -86,23 +91,20 @@ function ChatArea({ room, currentUser, onSendMessage }: ChatAreaProps) {
               <p>This is the beginning of your conversation in this room.</p>
             </div>
           ) : (
-            messages.map((message) => (
-              <div key={message.id} className={`${styles.message} ${message.userName === 'System' ? styles.systemMessage : ''}`}>
+            messages.map(message => (
+              <div
+                key={message.id}
+                className={`${styles.message} ${message.userName === 'System' ? styles.systemMessage : ''}`}
+              >
                 {message.userName === 'System' ? (
-                  <div className={styles.systemContent}>
-                    {message.content}
-                  </div>
+                  <div className={styles.systemContent}>{message.content}</div>
                 ) : (
                   <>
                     <div className={styles.messageHeader}>
                       <span className={styles.userName}>{message.userName}</span>
-                      <span className={styles.timestamp}>
-                        {formatTime(message.timestamp)}
-                      </span>
+                      <span className={styles.timestamp}>{formatTime(message.timestamp)}</span>
                     </div>
-                    <div className={styles.messageContent}>
-                      {message.content}
-                    </div>
+                    <div className={styles.messageContent}>{message.content}</div>
                   </>
                 )}
               </div>
@@ -115,17 +117,13 @@ function ChatArea({ room, currentUser, onSendMessage }: ChatAreaProps) {
       <div className={styles.messageInput}>
         <form onSubmit={handleSendMessage} className={styles.inputForm}>
           <input
-            type="text"
+            type='text'
             placeholder={`Message #${room.name}`}
             value={messageInput}
-            onChange={(e) => setMessageInput(e.target.value)}
+            onChange={e => setMessageInput(e.target.value)}
             className={styles.textInput}
           />
-          <button 
-            type="submit" 
-            className={styles.sendButton}
-            disabled={!messageInput.trim()}
-          >
+          <button type='submit' className={styles.sendButton} disabled={!messageInput.trim()}>
             Send
           </button>
         </form>

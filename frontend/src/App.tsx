@@ -69,18 +69,18 @@ function App() {
         avatar: undefined,
         isOnline: true,
         audioInputDevice: undefined,
-        audioOutputDevice: undefined
+        audioOutputDevice: undefined,
       }
-      
+
       await invoke('set_user_settings', {
         settings: {
           name: user.name,
           avatar: user.avatar,
           audioInputDevice: user.audioInputDevice,
-          audioOutputDevice: user.audioOutputDevice
-        }
+          audioOutputDevice: user.audioOutputDevice,
+        },
       })
-      
+
       setCurrentUser(user)
       setIsUserInitialized(true)
     } catch (error) {
@@ -90,9 +90,9 @@ function App() {
 
   const handleStartParty = async () => {
     try {
-      const newParty = await invoke<Party>('create_room', { name: 'Party' })
-      const inviteCode = await invoke<string>('generate_invite', { roomId: newParty.id })
-      
+      const newParty = await invoke<Party>('create_party', { name: 'Party' })
+      const inviteCode = await invoke<string>('generate_invite')
+
       setCurrentParty({ ...newParty, invite_code: inviteCode })
     } catch (error) {
       console.error('Failed to start party:', error)
@@ -102,8 +102,7 @@ function App() {
 
   const handleJoinParty = async (inviteCode: string) => {
     try {
-      const partyData = await invoke('parse_invite', { inviteCode })
-      const joinedParty = await invoke<Party>('join_room', { roomData: partyData })
+      const joinedParty = await invoke<Party>('join_party', { inviteCode })
       setCurrentParty(joinedParty)
       setShowJoinModal(false)
       setInviteCode('')
@@ -118,10 +117,9 @@ function App() {
 
     try {
       await invoke('send_message', {
-        roomId: currentParty.id,
-        content
+        content,
       })
-      
+
       await refreshCurrentParty()
     } catch (error) {
       console.error('Failed to send message:', error)
@@ -129,22 +127,27 @@ function App() {
   }
 
   const refreshCurrentParty = async () => {
-    if (!currentParty) return
-    
     try {
-      await invoke('sync_messages', { roomId: currentParty.id })
-      const updatedRooms = await invoke<Party[]>('get_rooms')
-      const updatedParty = updatedRooms.find(r => r.id === currentParty.id)
+      const updatedParty = await invoke<Party | null>('get_current_party')
       if (updatedParty) {
-        setCurrentParty({ ...updatedParty, invite_code: currentParty.invite_code })
+        setCurrentParty({ ...updatedParty, invite_code: currentParty?.invite_code })
       }
     } catch (error) {
       console.error('Failed to refresh party:', error)
     }
   }
 
-  const handleLeaveParty = () => {
-    setCurrentParty(null)
+  const handleLeaveParty = async () => {
+    try {
+      await invoke('leave_party')
+      setCurrentParty(null)
+      setIsInCall(false)
+    } catch (error) {
+      console.error('Failed to leave party:', error)
+      // Still set local state even if backend fails
+      setCurrentParty(null)
+      setIsInCall(false)
+    }
   }
 
   const handleSaveSettings = async (settings: any) => {
@@ -171,9 +174,9 @@ function App() {
 
   const handleJoinCall = async () => {
     if (!currentParty) return
-    
+
     try {
-      await invoke('join_call', { roomId: currentParty.id })
+      await invoke('join_call')
       setIsInCall(true)
       await refreshCurrentParty()
     } catch (error) {
@@ -184,9 +187,9 @@ function App() {
 
   const handleLeaveCall = async () => {
     if (!currentParty) return
-    
+
     try {
-      await invoke('leave_call', { roomId: currentParty.id })
+      await invoke('leave_call')
       setIsInCall(false)
       await refreshCurrentParty()
     } catch (error) {
@@ -204,11 +207,11 @@ function App() {
           <p>Enter your name to continue</p>
           <div className={styles.nameInput}>
             <input
-              type="text"
+              type='text'
               value={userName}
-              onChange={(e) => setUserName(e.target.value)}
-              placeholder="Your name"
-              onKeyDown={(e) => e.key === 'Enter' && handleSubmitName()}
+              onChange={e => setUserName(e.target.value)}
+              placeholder='Your name'
+              onKeyDown={e => e.key === 'Enter' && handleSubmitName()}
             />
             <button onClick={handleSubmitName} disabled={!userName.trim()}>
               Continue
@@ -230,7 +233,7 @@ function App() {
           {currentParty && (
             <>
               {currentParty.invite_code && (
-                <button 
+                <button
                   onClick={() => navigator.clipboard.writeText(currentParty.invite_code!)}
                   className={styles.copyInviteButton}
                 >
@@ -247,39 +250,33 @@ function App() {
 
       <div className={styles.contentWrapper}>
         {currentParty && (
-          <PartyMembers 
-            party={currentParty} 
+          <PartyMembers
+            party={currentParty}
             currentUser={currentUser}
             isMuted={isMuted}
-            isInCall={isInCall}
             onToggleMute={handleToggleMute}
-            onJoinCall={handleJoinCall}
-            onLeaveCall={handleLeaveCall}
             onOpenSettings={() => setShowSettings(true)}
           />
         )}
-        
+
         <div className={styles.mainContent}>
           {currentParty ? (
             <ChatArea
               room={currentParty}
               currentUser={currentUser}
+              isInCall={isInCall}
+              onJoinCall={handleJoinCall}
+              onLeaveCall={handleLeaveCall}
               onSendMessage={handleSendMessage}
             />
           ) : (
             <div className={styles.welcomeScreen}>
               <h2>Ready to party?</h2>
               <div className={styles.partyButtons}>
-                <button 
-                  className={styles.partyButton}
-                  onClick={handleStartParty}
-                >
+                <button className={styles.partyButton} onClick={handleStartParty}>
                   Start a party
                 </button>
-                <button 
-                  className={styles.partyButton}
-                  onClick={() => setShowJoinModal(true)}
-                >
+                <button className={styles.partyButton} onClick={() => setShowJoinModal(true)}>
                   Join a party
                 </button>
               </div>
@@ -293,21 +290,16 @@ function App() {
           <div className={styles.modalContent}>
             <h3>Join Party</h3>
             <input
-              type="text"
+              type='text'
               value={inviteCode}
-              onChange={(e) => setInviteCode(e.target.value)}
-              placeholder="Enter invite code"
+              onChange={e => setInviteCode(e.target.value)}
+              placeholder='Enter invite code'
             />
             <div className={styles.modalButtons}>
-              <button 
-                onClick={() => handleJoinParty(inviteCode)}
-                disabled={!inviteCode.trim()}
-              >
+              <button onClick={() => handleJoinParty(inviteCode)} disabled={!inviteCode.trim()}>
                 Join
               </button>
-              <button onClick={() => setShowJoinModal(false)}>
-                Cancel
-              </button>
+              <button onClick={() => setShowJoinModal(false)}>Cancel</button>
             </div>
           </div>
         </div>
