@@ -1,0 +1,7 @@
+frontend/node_modules
+frontend/dist
+
+.claude
+target
+
+.DS_Store

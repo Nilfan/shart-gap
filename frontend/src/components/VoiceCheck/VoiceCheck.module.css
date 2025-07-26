@@ -1,0 +1,157 @@
+.voiceCheck {
+  margin-top: 20px;
+  padding: 16px;
+  border: 1px solid #40444b;
+  border-radius: 8px;
+  background: #2f3136;
+}
+
+.voiceCheck h4 {
+  margin: 0 0 16px 0;
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* Volume Meter */
+.volumeMeter {
+  margin-bottom: 20px;
+}
+
+.volumeMeter label {
+  display: block;
+  margin-bottom: 8px;
+  color: #b9bbbe;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.volumeBar {
+  position: relative;
+  width: 100%;
+  height: 20px;
+  background: #40444b;
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.volumeLevel {
+  height: 100%;
+  transition: width 0.1s ease, background-color 0.3s ease;
+  border-radius: 10px;
+  min-width: 2px;
+}
+
+.volumeText {
+  font-size: 12px;
+  color: #b9bbbe;
+  float: right;
+}
+
+/* Recording Controls */
+.recordingControls {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.recordButton,
+.playButton {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.recordButton {
+  background: #5865f2;
+  color: white;
+}
+
+.recordButton:hover {
+  background: #4752c4;
+}
+
+.recordButton.recording {
+  background: #ed4245;
+  animation: pulse 1.5s infinite;
+}
+
+.recordButton.recording:hover {
+  background: #c73e41;
+}
+
+.playButton {
+  background: #3ba55c;
+  color: white;
+}
+
+.playButton:hover:not(.disabled) {
+  background: #2d7d32;
+}
+
+.playButton.disabled {
+  background: #4f545c;
+  color: #6d7075;
+  cursor: not-allowed;
+}
+
+/* Status Indicators */
+.recordingIndicator,
+.playingIndicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #b9bbbe;
+  font-size: 13px;
+  margin-top: 8px;
+}
+
+.recordingDot {
+  width: 8px;
+  height: 8px;
+  background: #ed4245;
+  border-radius: 50%;
+  animation: blink 1s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes blink {
+  0%, 50% {
+    opacity: 1;
+  }
+  51%, 100% {
+    opacity: 0.3;
+  }
+}
+
+/* Responsive Design */
+@media (max-width: 480px) {
+  .recordingControls {
+    flex-direction: column;
+  }
+  
+  .recordButton,
+  .playButton {
+    width: 100%;
+    justify-content: center;
+  }
+}

@@ -1,0 +1,264 @@
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background-color: #36393f;
+  color: #dcddde;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.topBar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 20px;
+  background-color: #2f3136;
+  border-bottom: 1px solid #202225;
+}
+
+.userInfo span {
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.topBarActions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+
+.contentWrapper {
+  flex: 1;
+  display: flex;
+}
+
+.mainContent {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0; /* Allow flex child to shrink */
+  overflow: hidden; /* Prevent overflow issues */
+}
+
+.nameScreen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  text-align: center;
+  padding: 20px;
+}
+
+.nameScreen h2 {
+  color: #ffffff;
+  margin-bottom: 10px;
+  font-size: 32px;
+  font-weight: 600;
+}
+
+.nameScreen p {
+  color: #b9bbbe;
+  font-size: 18px;
+  margin-bottom: 30px;
+}
+
+.nameInput {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  width: 100%;
+  max-width: 400px;
+}
+
+.nameInput input {
+  padding: 12px 16px;
+  font-size: 16px;
+  border: 2px solid #40444b;
+  border-radius: 4px;
+  background-color: #40444b;
+  color: #dcddde;
+}
+
+.nameInput input:focus {
+  outline: none;
+  border-color: #5865f2;
+}
+
+.nameInput button {
+  padding: 12px 24px;
+  font-size: 16px;
+  background-color: #5865f2;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.nameInput button:hover:not(:disabled) {
+  background-color: #4752c4;
+}
+
+.nameInput button:disabled {
+  background-color: #40444b;
+  cursor: not-allowed;
+}
+
+.welcomeScreen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+  padding: 20px;
+}
+
+.welcomeScreen h2 {
+  color: #ffffff;
+  margin-bottom: 30px;
+  font-size: 36px;
+  font-weight: 600;
+}
+
+.partyButtons {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+  max-width: 300px;
+}
+
+.partyButton {
+  padding: 20px 40px;
+  font-size: 20px;
+  font-weight: 600;
+  background-color: #5865f2;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.partyButton:hover {
+  background-color: #4752c4;
+  transform: translateY(-2px);
+}
+
+
+.copyInviteButton {
+  background-color: #23a559;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s;
+}
+
+.copyInviteButton:hover {
+  background-color: #1e8a4e;
+}
+
+.leaveButton {
+  background-color: #ed4245;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s;
+}
+
+.leaveButton:hover {
+  background-color: #c53030;
+}
+
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modalContent {
+  background-color: #36393f;
+  padding: 30px;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.modalContent h3 {
+  color: #ffffff;
+  margin: 0;
+  font-size: 24px;
+  text-align: center;
+}
+
+.modalContent input {
+  padding: 12px 16px;
+  font-size: 16px;
+  border: 2px solid #40444b;
+  border-radius: 4px;
+  background-color: #40444b;
+  color: #dcddde;
+}
+
+.modalContent input:focus {
+  outline: none;
+  border-color: #5865f2;
+}
+
+.modalButtons {
+  display: flex;
+  gap: 10px;
+}
+
+.modalButtons button {
+  flex: 1;
+  padding: 12px 24px;
+  font-size: 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.modalButtons button:first-child {
+  background-color: #5865f2;
+  color: white;
+}
+
+.modalButtons button:first-child:hover:not(:disabled) {
+  background-color: #4752c4;
+}
+
+.modalButtons button:first-child:disabled {
+  background-color: #40444b;
+  cursor: not-allowed;
+}
+
+.modalButtons button:last-child {
+  background-color: #40444b;
+  color: #dcddde;
+}
+
+.modalButtons button:last-child:hover {
+  background-color: #484c52;
+}
