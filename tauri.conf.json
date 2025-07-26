@@ -1,43 +1,29 @@
 {
-  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "com.shortgap.app",
+  "productName": "ShortGap",
+  "version": "0.1.0",
   "build": {
-    "beforeDevCommand": "cd frontend && npm run build",
-    "beforeBuildCommand": "cd frontend && npm run build",
-    "devPath": "./frontend/dist",
-    "distDir": "./frontend/dist",
-    "withGlobalTauri": true
+    "frontendDist": "./frontend/dist"
   },
-  "package": {
-    "productName": "ShortGap",
-    "version": "0.1.0"
-  },
-  "tauri": {
-    "allowlist": {
-      "all": false,
-      "shell": {
-        "all": false,
-        "open": true
-      }
-    },
-    "bundle": {
-      "active": true,
-      "targets": "all",
-      "identifier": "com.shortgap.app",
-      "icon": ["icons/icon.png"]
-    },
-    "security": {
-      "csp": null
-    },
+  "app": {
     "windows": [
       {
-        "fullscreen": false,
-        "height": 600,
-        "resizable": true,
         "title": "ShortGap",
         "width": 1020,
+        "height": 600,
         "minWidth": 1020,
-        "minHeight": 600
+        "minHeight": 600,
+        "resizable": true,
+        "fullscreen": false
       }
-    ]
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": ["icons/icon.png"]
   }
 }

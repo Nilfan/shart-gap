@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { invoke } from '@tauri-apps/api/tauri'
+import { invoke } from '@tauri-apps/api/core'
 import ChatArea from './components/ChatArea/ChatArea'
 import Settings from './components/Settings/Settings'
 import PartyMembers from './components/PartyMembers/PartyMembers'
