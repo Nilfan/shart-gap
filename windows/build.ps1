@@ -11,11 +11,11 @@ param(
 if ($Help) {
     Write-Host "ShortGap Build Script for Windows" -ForegroundColor Green
     Write-Host ""
-    Write-Host "USAGE:"
-    Write-Host "  .\build.ps1                 # Development build"
-    Write-Host "  .\build.ps1 -Release        # Production build"
-    Write-Host "  .\build.ps1 -Clean          # Clean build directories"
-    Write-Host "  .\build.ps1 -Help           # Show this help"
+    Write-Host "USAGE (run from project root):"
+    Write-Host "  .\windows\build.ps1          # Development build"
+    Write-Host "  .\windows\build.ps1 -Release # Production build"
+    Write-Host "  .\windows\build.ps1 -Clean   # Clean build directories"
+    Write-Host "  .\windows\build.ps1 -Help    # Show this help"
     Write-Host ""
     Write-Host "REQUIREMENTS:"
     Write-Host "  - Rust (latest stable)"
@@ -34,22 +34,22 @@ $WarningColor = "Yellow"
 
 function Write-Info {
     param([string]$Message)
-    Write-Host "ℹ️  $Message" -ForegroundColor $InfoColor
+    Write-Host "[INFO] $Message" -ForegroundColor $InfoColor
 }
 
 function Write-Success {
     param([string]$Message)
-    Write-Host "✅ $Message" -ForegroundColor $SuccessColor
+    Write-Host "[OK] $Message" -ForegroundColor $SuccessColor
 }
 
 function Write-Error {
     param([string]$Message)
-    Write-Host "❌ $Message" -ForegroundColor $ErrorColor
+    Write-Host "[ERROR] $Message" -ForegroundColor $ErrorColor
 }
 
 function Write-Warning {
     param([string]$Message)
-    Write-Host "⚠️  $Message" -ForegroundColor $WarningColor
+    Write-Host "[WARN] $Message" -ForegroundColor $WarningColor
 }
 
 function Test-Command {
@@ -194,9 +194,20 @@ function Build-App {
 
 # Main script execution
 Write-Host ""
-Write-Host "🦀 ShortGap Build Script" -ForegroundColor Green
-Write-Host "========================" -ForegroundColor Green
+Write-Host "ShortGap Build Script for Windows" -ForegroundColor Green
+Write-Host "=================================" -ForegroundColor Green
 Write-Host ""
+
+# Ensure we're in the project root directory
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$projectRoot = Split-Path -Parent $scriptDir
+if (Test-Path $projectRoot) {
+    Set-Location $projectRoot
+    Write-Info "Working directory: $projectRoot"
+} else {
+    Write-Error "Could not find project root directory"
+    exit 1
+}
 
 # Handle clean flag
 if ($Clean) {
@@ -228,8 +239,8 @@ Build-App -IsRelease $Release
 
 Write-Host ""
 if ($Release) {
-    Write-Success "🎉 ShortGap production build completed!"
+    Write-Success "ShortGap production build completed!"
     Write-Info "Check target/release/bundle/ for the executable"
 } else {
-    Write-Success "🎉 ShortGap development server started!"
+    Write-Success "ShortGap development server started!"
 }

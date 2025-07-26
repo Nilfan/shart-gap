@@ -81,6 +81,7 @@ In the middle of page is a chat area where users can chat with each other, messa
   - Streamlined root README for cross-platform clarity
   - Updated build commands to reference `.\windows\build.ps1`
 - **Working Windows development environment**: Successfully resolved all Windows compilation issues and created automated build process
+- **Fixed PowerShell script path handling**: Updated `windows/build.ps1` to automatically navigate to project root directory when called from anywhere, ensuring correct relative paths for all operations
 
 ## Implementation Status
 
