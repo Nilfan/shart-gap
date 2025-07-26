@@ -133,49 +133,53 @@ pub async fn join_party(
 
     // Try to connect to peers in order
     println!("🌐 Attempting to connect to peers...");
-    let mut networking = state.networking.lock().await;
     let mut connected = false;
     let mut connection_errors = Vec::new();
 
-    // Try primary peer first
-    if let Some(primary_peer) = invite_data.get_primary_peer() {
-        println!("🔗 Trying primary peer: {}", primary_peer);
-        match networking.connect_to_peer(primary_peer, invite_data.protocol.clone()).await {
-            Ok(_) => {
-                println!("✅ Connected to primary peer: {}", primary_peer);
-                connected = true;
-            }
-            Err(e) => {
-                let error_msg = format!("Primary peer {} failed: {}", primary_peer, e);
-                println!("❌ {}", error_msg);
-                connection_errors.push(error_msg);
-            }
-        }
-    } else {
-        println!("⚠️ No primary peer found in invite");
-    }
-
-    // Try fallback peers if primary failed
-    if !connected {
-        let fallback_peers = invite_data.get_fallback_peers();
-        println!("🔄 Trying {} fallback peers...", fallback_peers.len());
+    // Scope the networking lock to avoid deadlock
+    {
+        let mut networking = state.networking.lock().await;
         
-        for (i, peer_addr) in fallback_peers.iter().enumerate() {
-            println!("🔗 Trying fallback peer {}/{}: {}", i + 1, fallback_peers.len(), peer_addr);
-            match networking.connect_to_peer(*peer_addr, invite_data.protocol.clone()).await {
+        // Try primary peer first
+        if let Some(primary_peer) = invite_data.get_primary_peer() {
+            println!("🔗 Trying primary peer: {}", primary_peer);
+            match networking.connect_to_peer(primary_peer, invite_data.protocol.clone()).await {
                 Ok(_) => {
-                    println!("✅ Connected to fallback peer: {}", peer_addr);
+                    println!("✅ Connected to primary peer: {}", primary_peer);
                     connected = true;
-                    break;
                 }
                 Err(e) => {
-                    let error_msg = format!("Fallback peer {} failed: {}", peer_addr, e);
+                    let error_msg = format!("Primary peer {} failed: {}", primary_peer, e);
                     println!("❌ {}", error_msg);
                     connection_errors.push(error_msg);
                 }
             }
+        } else {
+            println!("⚠️ No primary peer found in invite");
         }
-    }
+
+        // Try fallback peers if primary failed
+        if !connected {
+            let fallback_peers = invite_data.get_fallback_peers();
+            println!("🔄 Trying {} fallback peers...", fallback_peers.len());
+            
+            for (i, peer_addr) in fallback_peers.iter().enumerate() {
+                println!("🔗 Trying fallback peer {}/{}: {}", i + 1, fallback_peers.len(), peer_addr);
+                match networking.connect_to_peer(*peer_addr, invite_data.protocol.clone()).await {
+                    Ok(_) => {
+                        println!("✅ Connected to fallback peer: {}", peer_addr);
+                        connected = true;
+                        break;
+                    }
+                    Err(e) => {
+                        let error_msg = format!("Fallback peer {} failed: {}", peer_addr, e);
+                        println!("❌ {}", error_msg);
+                        connection_errors.push(error_msg);
+                    }
+                }
+            }
+        }
+    } // Release networking lock here
 
     if !connected {
         let full_error = format!(
@@ -194,25 +198,34 @@ pub async fn join_party(
 
     println!("✅ Joined party '{}' with ID: {}", party.name, party.id);
 
-    // Send UserJoined message to notify other peers
-    let networking = state.networking.lock().await;
-    let join_message = crate::networking::NetworkMessage {
-        id: Uuid::new_v4(),
-        from: user_clone.id.to_string(),
-        to: None,
-        message_type: crate::networking::MessageType::UserJoined,
-        payload: serde_json::to_value(&user_clone).map_err(|e| e.to_string())?,
-        timestamp: chrono::Utc::now(),
-    };
-
-    if let Err(e) = networking.broadcast_message(join_message).await {
-        eprintln!("Failed to broadcast user joined message: {}", e);
+    // Set as current party first
+    {
+        let mut current_party = state.current_party.lock().await;
+        *current_party = Some(party.clone());
+        println!("📝 Updated current party state");
     }
 
-    // Set as current party
-    let mut current_party = state.current_party.lock().await;
-    *current_party = Some(party.clone());
+    // Send UserJoined message to notify other peers (in separate scope)
+    println!("📡 Broadcasting user joined message...");
+    {
+        let networking = state.networking.lock().await;
+        let join_message = crate::networking::NetworkMessage {
+            id: Uuid::new_v4(),
+            from: user_clone.id.to_string(),
+            to: None,
+            message_type: crate::networking::MessageType::UserJoined,
+            payload: serde_json::to_value(&user_clone).map_err(|e| e.to_string())?,
+            timestamp: chrono::Utc::now(),
+        };
 
+        if let Err(e) = networking.broadcast_message(join_message).await {
+            println!("⚠️ Failed to broadcast user joined message: {}", e);
+        } else {
+            println!("✅ User joined message broadcasted successfully");
+        }
+    }
+
+    println!("🎉 Party join process completed successfully!");
     Ok(party)
 }
 
@@ -334,6 +347,43 @@ pub async fn get_user_ip() -> Result<String, String> {
     match local_ip_address::local_ip() {
         Ok(ip) => Ok(ip.to_string()),
         Err(e) => Err(format!("Failed to get local IP: {}", e)),
+    }
+}
+
+#[tauri::command]
+pub async fn test_network_connectivity(target_ip: String, port: u16) -> Result<String, String> {
+    use std::net::SocketAddr;
+    use std::str::FromStr;
+    
+    println!("🔍 Testing network connectivity to {}:{}", target_ip, port);
+    
+    let target_addr = match SocketAddr::from_str(&format!("{}:{}", target_ip, port)) {
+        Ok(addr) => addr,
+        Err(e) => return Err(format!("Invalid address format: {}", e)),
+    };
+    
+    // Test TCP connection
+    let connect_result = tokio::time::timeout(
+        tokio::time::Duration::from_secs(5),
+        tokio::net::TcpStream::connect(target_addr)
+    ).await;
+    
+    match connect_result {
+        Ok(Ok(_stream)) => {
+            let success_msg = format!("✅ Successfully connected to {}:{}", target_ip, port);
+            println!("{}", success_msg);
+            Ok(success_msg)
+        }
+        Ok(Err(e)) => {
+            let error_msg = format!("❌ Connection failed: {} ({})", e, e.kind());
+            println!("{}", error_msg);
+            Err(error_msg)
+        }
+        Err(_) => {
+            let timeout_msg = format!("❌ Connection timeout (5s) to {}:{}", target_ip, port);
+            println!("{}", timeout_msg);
+            Err(timeout_msg)
+        }
     }
 }
 

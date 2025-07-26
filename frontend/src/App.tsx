@@ -130,9 +130,16 @@ function App() {
       // Small delay to show validation message
       await new Promise(resolve => setTimeout(resolve, 1000))
       
-      // Attempt to join
+      // Attempt to join with timeout
       setJoinStatus('Establishing connection...')
-      const joinedParty = await invoke<Party>('join_party', { inviteCode })
+      
+      // Add timeout to the join operation
+      const joinPromise = invoke<Party>('join_party', { inviteCode })
+      const timeoutPromise = new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error('Join operation timed out after 30 seconds')), 30000)
+      )
+      
+      const joinedParty = await Promise.race([joinPromise, timeoutPromise])
       
       setJoinStatus('Connected! Joining party...')
       setCurrentParty(joinedParty)
@@ -142,7 +149,24 @@ function App() {
     } catch (error) {
       console.error('Failed to join party:', error)
       setJoinStatus('')
-      alert(`Failed to join party: ${error}`)
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      
+      // Provide helpful troubleshooting for common network errors
+      let helpMessage = ''
+      if (errorMessage.includes('No route to host') || errorMessage.includes('Connection refused')) {
+        helpMessage = '\n\n🛠️ Troubleshooting tips:\n' +
+          '• Check if both devices are on the same WiFi network\n' +
+          '• Ensure firewall allows port 8080 connections\n' +
+          '• Try disabling firewall temporarily to test\n' +
+          '• Make sure the party creator\'s app is still running'
+      } else if (errorMessage.includes('timeout')) {
+        helpMessage = '\n\n🛠️ Troubleshooting tips:\n' +
+          '• Check network connection stability\n' +
+          '• Ensure the party creator is still online\n' +
+          '• Try getting a fresh invite code'
+      }
+      
+      alert(`Failed to join party: ${errorMessage}${helpMessage}`)
     } finally {
       setIsJoining(false)
     }
