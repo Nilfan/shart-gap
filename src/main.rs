@@ -15,7 +15,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 pub struct AppState {
-    pub rooms: Arc<Mutex<Vec<room::Room>>>,
+    pub current_party: Arc<Mutex<Option<room::Room>>>,
     pub current_user: Arc<Mutex<Option<user::User>>>,
     pub networking: Arc<Mutex<networking::NetworkManager>>,
 }
@@ -23,7 +23,7 @@ pub struct AppState {
 #[tokio::main]
 async fn main() {
     let app_state = AppState {
-        rooms: Arc::new(Mutex::new(Vec::new())),
+        current_party: Arc::new(Mutex::new(None)),
         current_user: Arc::new(Mutex::new(None)),
         networking: Arc::new(Mutex::new(networking::NetworkManager::new())),
     };
@@ -31,11 +31,11 @@ async fn main() {
     tauri::Builder::default()
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
-            commands::create_room,
-            commands::join_room,
-            commands::leave_room,
+            commands::create_party,
+            commands::join_party,
+            commands::leave_party,
             commands::send_message,
-            commands::get_rooms,
+            commands::get_current_party,
             commands::set_user_settings,
             commands::get_ping_stats,
             commands::change_protocol,

@@ -206,3 +206,31 @@
   background-color: transparent;
   text-align: center;
 }
+
+.callButton {
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: background-color 0.2s;
+}
+
+.callButton.notInCall {
+  background-color: #23a559;
+  color: white;
+}
+
+.callButton.notInCall:hover {
+  background-color: #1e8f4f;
+}
+
+.callButton.inCall {
+  background-color: #ed4245;
+  color: white;
+}
+
+.callButton.inCall:hover {
+  background-color: #c53030;
+}

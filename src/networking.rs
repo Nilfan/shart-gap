@@ -205,4 +205,18 @@ impl NetworkManager {
             .min_by_key(|(_, peer)| peer.ping_ms.unwrap_or(u64::MAX))
             .map(|(id, _)| id.clone())
     }
+
+    pub async fn disconnect_all(&mut self) -> Result<()> {
+        // Clear all connections
+        self.connections.clear();
+        
+        // Reset state
+        self.is_server = false;
+        self.server_peer = None;
+        
+        // TODO: Implement actual connection teardown for each protocol
+        println!("🔌 Disconnected from all peers");
+        
+        Ok(())
+    }
 }

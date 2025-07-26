@@ -41,12 +41,19 @@ pub struct PingStats {
 }
 
 #[tauri::command]
-pub async fn create_room(
+pub async fn create_party(
     state: State<'_, AppState>,
     name: String,
     protocol: Option<Protocol>,
 ) -> Result<Room, String> {
     let protocol = protocol.unwrap_or(Protocol::TCP);
+    
+    // Check if there's already an active party
+    let current_party_guard = state.current_party.lock().await;
+    if current_party_guard.is_some() {
+        return Err("A party is already active. Leave the current party before creating a new one.".to_string());
+    }
+    drop(current_party_guard);
     
     // Get current user
     let current_user_guard = state.current_user.lock().await;
@@ -57,39 +64,36 @@ pub async fn create_room(
     let user_clone = current_user.clone();
     drop(current_user_guard);
 
-    // Create the room
-    let room = Room::new(name, user_clone, protocol.clone());
+    // Create the party
+    let party = Room::new(name, user_clone, protocol.clone());
     
-    // Save room to file
-    if let Err(e) = room.save_to_file() {
-        return Err(format!("Failed to save room: {}", e));
-    }
-    
-    // Debug: Print where the room was saved
-    let app_data_dir = dirs::data_dir()
-        .ok_or("Could not find app data directory")?
-        .join("shortgap")
-        .join("rooms");
-    println!("✅ Room '{}' saved to: {}", room.name, app_data_dir.join(format!("{}.json", room.id)).display());
+    println!("✅ Created new party '{}' with ID: {}", party.name, party.id);
 
-    // Add to rooms list
-    let mut rooms = state.rooms.lock().await;
-    rooms.push(room.clone());
+    // Set as current party (session-based, no file persistence)
+    let mut current_party = state.current_party.lock().await;
+    *current_party = Some(party.clone());
 
-    // Start server for this room
+    // Start server for this party
     let mut networking = state.networking.lock().await;
     if let Err(e) = networking.start_server(8080, protocol).await {
         return Err(format!("Failed to start server: {}", e));
     }
 
-    Ok(room)
+    Ok(party)
 }
 
 #[tauri::command]
-pub async fn join_room(
+pub async fn join_party(
     state: State<'_, AppState>,
     invite_code: String,
 ) -> Result<Room, String> {
+    // Check if there's already an active party
+    let current_party_guard = state.current_party.lock().await;
+    if current_party_guard.is_some() {
+        return Err("Already in a party. Leave the current party before joining another.".to_string());
+    }
+    drop(current_party_guard);
+
     // Parse invite code
     let invite_data = InviteData::parse_invite_code(&invite_code)
         .map_err(|e| format!("Invalid invite code: {}", e))?;
@@ -128,81 +132,54 @@ pub async fn join_room(
     }
 
     if !connected {
-        return Err("Could not connect to any peers in the room".to_string());
+        return Err("Could not connect to any peers in the party".to_string());
     }
 
-    // Create local room representation or load existing one
-    let room = match Room::load_from_file(invite_data.room_id) {
-        Ok(mut existing_room) => {
-            // Room exists locally, add user to it (handles name collision)
-            if let Err(e) = existing_room.add_user(user_clone) {
-                return Err(format!("Failed to add user to existing room: {}", e));
-            }
-            existing_room
-        },
-        Err(_) => {
-            // Create new local room representation
-            let mut new_room = Room::new(invite_data.room_name, user_clone, invite_data.protocol);
-            new_room.id = invite_data.room_id;
-            new_room.peer_addresses = invite_data.peer_addresses;
-            new_room
-        }
-    };
+    // Create party representation (session-based, no persistence)
+    let mut party = Room::new(invite_data.room_name, user_clone, invite_data.protocol);
+    party.id = invite_data.room_id;
+    party.peer_addresses = invite_data.peer_addresses;
 
-    // Save room to file
-    if let Err(e) = room.save_to_file() {
-        return Err(format!("Failed to save room: {}", e));
-    }
+    println!("✅ Joined party '{}' with ID: {}", party.name, party.id);
 
-    // Add to rooms list
-    let mut rooms = state.rooms.lock().await;
-    rooms.push(room.clone());
+    // Set as current party
+    let mut current_party = state.current_party.lock().await;
+    *current_party = Some(party.clone());
 
-    Ok(room)
+    Ok(party)
 }
 
 #[tauri::command]
-pub async fn leave_room(
+pub async fn leave_party(
     state: State<'_, AppState>,
-    room_id: String,
 ) -> Result<(), String> {
-    let room_uuid = Uuid::parse_str(&room_id)
-        .map_err(|e| format!("Invalid room ID: {}", e))?;
-
-    let mut rooms = state.rooms.lock().await;
+    let mut current_party = state.current_party.lock().await;
     
-    if let Some(pos) = rooms.iter().position(|r| r.id == room_uuid) {
-        let _room = rooms.remove(pos);
+    if current_party.is_some() {
+        let party = current_party.take().unwrap();
         
-        // Remove room file
-        let app_data_dir = dirs::data_dir()
-            .ok_or("Could not find app data directory")?
-            .join("shortgap")
-            .join("rooms");
+        println!("✅ Left party '{}' with ID: {}", party.name, party.id);
         
-        let file_path = app_data_dir.join(format!("{}.json", room_id));
-        if file_path.exists() {
-            std::fs::remove_file(file_path)
-                .map_err(|e| format!("Failed to remove room file: {}", e))?;
-        }
-
         // Notify other peers about leaving
         // This would be implemented with the networking layer
         
+        // Stop networking for the party
+        let mut networking = state.networking.lock().await;
+        if let Err(e) = networking.disconnect_all().await {
+            eprintln!("Warning: Failed to disconnect from peers: {}", e);
+        }
+        
         Ok(())
     } else {
-        Err("Room not found".to_string())
+        Err("Not currently in a party".to_string())
     }
 }
 
 #[tauri::command]
 pub async fn send_message(
     state: State<'_, AppState>,
-    room_id: String,
     content: String,
 ) -> Result<(), String> {
-    let room_uuid = Uuid::parse_str(&room_id)
-        .map_err(|e| format!("Invalid room ID: {}", e))?;
 
     let current_user = {
         let current_user_guard = state.current_user.lock().await;
@@ -219,21 +196,16 @@ pub async fn send_message(
         timestamp: chrono::Utc::now(),
     };
 
-    // Find and update the specific room
-    let mut rooms = state.rooms.lock().await;
-    if let Some(room) = rooms.iter_mut().find(|r| r.id == room_uuid) {
-        // Add message to THIS specific room's message list
-        room.add_message(message.clone());
+    // Update the current party
+    let mut current_party = state.current_party.lock().await;
+    if let Some(party) = current_party.as_mut() {
+        // Add message to the current party
+        party.add_message(message.clone());
         
-        // Save THIS specific room's data to its own unique file
-        if let Err(e) = room.save_to_file() {
-            return Err(format!("Failed to save room {}: {}", room.name, e));
-        }
-        
-        println!("✅ Message added to room '{}' (ID: {})", room.name, room.id);
-        println!("📁 Room '{}' now has {} messages (stored separately)", room.name, room.messages.len());
+        println!("✅ Message added to party '{}' (ID: {})", party.name, party.id);
+        println!("📁 Party '{}' now has {} messages", party.name, party.messages.len());
 
-        // Send message to other peers in this room only
+        // Send message to other peers in the party
         let networking = state.networking.lock().await;
         let network_message = crate::networking::NetworkMessage {
             id: Uuid::new_v4(),
@@ -250,31 +222,14 @@ pub async fn send_message(
 
         Ok(())
     } else {
-        Err(format!("Room with ID {} not found", room_uuid))
+        Err("Not currently in a party".to_string())
     }
 }
 
 #[tauri::command]
-pub async fn get_rooms(state: State<'_, AppState>) -> Result<Vec<Room>, String> {
-    // Load saved rooms from disk
-    let saved_room_ids = crate::room::Room::list_saved_rooms()
-        .map_err(|e| format!("Failed to list saved rooms: {}", e))?;
-
-    let mut rooms = state.rooms.lock().await;
-    rooms.clear();
-
-    // Load each saved room from its individual file
-    for room_id in saved_room_ids {
-        match crate::room::Room::load_from_file(room_id) {
-            Ok(room) => {
-                println!("📂 Loaded room '{}' with {} messages from separate file", room.name, room.messages.len());
-                rooms.push(room);
-            },
-            Err(e) => eprintln!("❌ Failed to load room {}: {}", room_id, e),
-        }
-    }
-
-    Ok(rooms.clone())
+pub async fn get_current_party(state: State<'_, AppState>) -> Result<Option<Room>, String> {
+    let current_party = state.current_party.lock().await;
+    Ok(current_party.clone())
 }
 
 #[tauri::command]
@@ -309,16 +264,12 @@ pub async fn get_ping_stats(
 #[tauri::command]
 pub async fn change_protocol(
     state: State<'_, AppState>,
-    room_id: String,
     new_protocol: Protocol,
 ) -> Result<(), String> {
-    let room_uuid = Uuid::parse_str(&room_id)
-        .map_err(|e| format!("Invalid room ID: {}", e))?;
-
-    let mut rooms = state.rooms.lock().await;
-    if let Some(room) = rooms.iter_mut().find(|r| r.id == room_uuid) {
-        let _old_protocol = room.protocol.clone();
-        let peers = room.peer_addresses.clone();
+    let mut current_party = state.current_party.lock().await;
+    if let Some(party) = current_party.as_mut() {
+        let _old_protocol = party.protocol.clone();
+        let peers = party.peer_addresses.clone();
         
         // Switch protocol in networking layer
         let mut networking = state.networking.lock().await;
@@ -326,40 +277,33 @@ pub async fn change_protocol(
             return Err(format!("Failed to switch protocol: {}", e));
         }
 
-        // Update room
-        room.switch_protocol(new_protocol);
+        // Update party
+        party.switch_protocol(new_protocol);
         
-        // Save updated room
-        if let Err(e) = room.save_to_file() {
-            return Err(format!("Failed to save room: {}", e));
-        }
+        println!("✅ Changed party protocol to {:?}", party.protocol);
 
         Ok(())
     } else {
-        Err("Room not found".to_string())
+        Err("Not currently in a party".to_string())
     }
 }
 
 #[tauri::command]
 pub async fn generate_invite(
     state: State<'_, AppState>,
-    room_id: String,
 ) -> Result<String, String> {
-    let room_uuid = Uuid::parse_str(&room_id)
-        .map_err(|e| format!("Invalid room ID: {}", e))?;
-
-    let rooms = state.rooms.lock().await;
-    if let Some(room) = rooms.iter().find(|r| r.id == room_uuid) {
+    let current_party = state.current_party.lock().await;
+    if let Some(party) = current_party.as_ref() {
         let current_user_guard = state.current_user.lock().await;
         let current_user = current_user_guard.as_ref()
             .ok_or("No user configured")?;
 
         let invite_data = InviteData::new(
-            room.id,
-            room.name.clone(),
+            party.id,
+            party.name.clone(),
             current_user.name.clone(),
-            room.peer_addresses.clone(),
-            room.protocol.clone(),
+            party.peer_addresses.clone(),
+            party.protocol.clone(),
         );
 
         let invite_code = invite_data.generate_invite_code()
@@ -367,7 +311,7 @@ pub async fn generate_invite(
 
         Ok(invite_code)
     } else {
-        Err("Room not found".to_string())
+        Err("Not currently in a party".to_string())
     }
 }
 
@@ -380,27 +324,20 @@ pub async fn parse_invite(invite_code: String) -> Result<InviteData, String> {
 #[tauri::command]
 pub async fn check_room_health(
     state: State<'_, AppState>,
-    room_id: String,
 ) -> Result<bool, String> {
-    let room_uuid = Uuid::parse_str(&room_id)
-        .map_err(|e| format!("Invalid room ID: {}", e))?;
-
-    let mut rooms = state.rooms.lock().await;
-    if let Some(room) = rooms.iter_mut().find(|r| r.id == room_uuid) {
+    let mut current_party = state.current_party.lock().await;
+    if let Some(party) = current_party.as_mut() {
         // Clean up offline users first (5 minute threshold)
-        room.cleanup_offline_users(5);
+        party.cleanup_offline_users(5);
         
         // Check server health
-        let server_healthy = room.check_server_health();
+        let server_healthy = party.check_server_health();
         
-        // Save updated room state
-        if let Err(e) = room.save_to_file() {
-            eprintln!("Failed to save room after health check: {}", e);
-        }
+        println!("🔍 Party health check: {}", if server_healthy { "healthy" } else { "unhealthy" });
         
         Ok(server_healthy)
     } else {
-        Err("Room not found".to_string())
+        Err("Not currently in a party".to_string())
     }
 }
 
@@ -415,7 +352,7 @@ pub async fn mark_user_offline_cmd(
     let user_uuid = Uuid::parse_str(&user_id)
         .map_err(|e| format!("Invalid user ID: {}", e))?;
 
-    let mut rooms = state.rooms.lock().await;
+    let mut rooms = state.current_party.lock().await;
     if let Some(room) = rooms.iter_mut().find(|r| r.id == room_uuid) {
         room.mark_user_offline(user_uuid)
             .map_err(|e| format!("Failed to mark user offline: {}", e))?;
@@ -439,7 +376,7 @@ pub async fn sync_messages(
     let room_uuid = Uuid::parse_str(&room_id)
         .map_err(|e| format!("Invalid room ID: {}", e))?;
 
-    let mut rooms = state.rooms.lock().await;
+    let mut rooms = state.current_party.lock().await;
     if let Some(room) = rooms.iter_mut().find(|r| r.id == room_uuid) {
         println!("🔄 Syncing messages for room '{}' (ID: {})", room.name, room.id);
         
@@ -470,7 +407,7 @@ pub async fn get_room_messages(
     let room_uuid = Uuid::parse_str(&room_id)
         .map_err(|e| format!("Invalid room ID: {}", e))?;
 
-    let rooms = state.rooms.lock().await;
+    let rooms = state.current_party.lock().await;
     if let Some(room) = rooms.iter().find(|r| r.id == room_uuid) {
         Ok(room.messages.clone())
     } else {
@@ -481,11 +418,7 @@ pub async fn get_room_messages(
 #[tauri::command]
 pub async fn join_call(
     state: State<'_, AppState>,
-    room_id: String,
 ) -> Result<(), String> {
-    let room_uuid = Uuid::parse_str(&room_id)
-        .map_err(|e| format!("Invalid room ID: {}", e))?;
-
     let current_user = {
         let current_user_guard = state.current_user.lock().await;
         current_user_guard.as_ref()
@@ -493,17 +426,18 @@ pub async fn join_call(
             .clone()
     };
 
-    let mut rooms = state.rooms.lock().await;
-    if let Some(room) = rooms.iter_mut().find(|r| r.id == room_uuid) {
-        // Find and update the user in the room
-        if let Some(user) = room.users.get_mut(&current_user.id) {
+    let mut current_party = state.current_party.lock().await;
+    if let Some(party) = current_party.as_mut() {
+        // Find and update the user in the party
+        if let Some(user) = party.users.get_mut(&current_user.id) {
             if !user.is_in_call {
+                let user_name = user.name.clone(); // Store name to avoid borrow conflicts
                 user.join_call();
                 
                 // Start call server if this is the first user joining
-                if !room.is_call_active {
-                    room.is_call_active = true;
-                    room.call_server_id = Some(current_user.id);
+                if !party.is_call_active {
+                    party.is_call_active = true;
+                    party.call_server_id = Some(current_user.id);
                 }
                 
                 // Add system message
@@ -511,36 +445,29 @@ pub async fn join_call(
                     id: Uuid::new_v4(),
                     user_id: Uuid::nil(), // System message
                     user_name: "System".to_string(),
-                    content: format!("**{}** connected to call", user.name),
+                    content: format!("**{}** connected to call", user_name),
                     timestamp: chrono::Utc::now(),
                 };
-                room.add_message(system_message);
+                party.add_message(system_message);
                 
-                // Save room
-                if let Err(e) = room.save_to_file() {
-                    return Err(format!("Failed to save room: {}", e));
-                }
+                println!("✅ {} joined the call", user_name);
                 
                 Ok(())
             } else {
                 Err("User is already in call".to_string())
             }
         } else {
-            Err("User not found in room".to_string())
+            Err("User not found in party".to_string())
         }
     } else {
-        Err("Room not found".to_string())
+        Err("Not currently in a party".to_string())
     }
 }
 
 #[tauri::command]
 pub async fn leave_call(
     state: State<'_, AppState>,
-    room_id: String,
 ) -> Result<(), String> {
-    let room_uuid = Uuid::parse_str(&room_id)
-        .map_err(|e| format!("Invalid room ID: {}", e))?;
-
     let current_user = {
         let current_user_guard = state.current_user.lock().await;
         current_user_guard.as_ref()
@@ -548,44 +475,42 @@ pub async fn leave_call(
             .clone()
     };
 
-    let mut rooms = state.rooms.lock().await;
-    if let Some(room) = rooms.iter_mut().find(|r| r.id == room_uuid) {
-        // Find and update the user in the room
-        if let Some(user) = room.users.get_mut(&current_user.id) {
+    let mut current_party = state.current_party.lock().await;
+    if let Some(party) = current_party.as_mut() {
+        // Find and update the user in the party
+        if let Some(user) = party.users.get_mut(&current_user.id) {
             if user.is_in_call {
+                let user_name = user.name.clone(); // Store name to avoid borrow conflicts
                 user.leave_call();
-                
-                // Add system message
-                let system_message = ChatMessage {
-                    id: Uuid::new_v4(),
-                    user_id: Uuid::nil(), // System message
-                    user_name: "System".to_string(),
-                    content: format!("**{}** disconnected from call", user.name),
-                    timestamp: chrono::Utc::now(),
-                };
-                room.add_message(system_message);
-                
-                // Check if no one is left in call
-                let users_in_call: Vec<_> = room.users.values().filter(|u| u.is_in_call).collect();
-                if users_in_call.is_empty() {
-                    room.is_call_active = false;
-                    room.call_server_id = None;
-                }
-                
-                // Save room
-                if let Err(e) = room.save_to_file() {
-                    return Err(format!("Failed to save room: {}", e));
-                }
-                
-                Ok(())
             } else {
-                Err("User is not in call".to_string())
+                return Err("User is not in call".to_string());
             }
         } else {
-            Err("User not found in room".to_string())
+            return Err("User not found in party".to_string());
         }
+        
+        // Add system message
+        let system_message = ChatMessage {
+            id: Uuid::new_v4(),
+            user_id: Uuid::nil(), // System message
+            user_name: "System".to_string(),
+            content: format!("**{}** disconnected from call", current_user.name),
+            timestamp: chrono::Utc::now(),
+        };
+        party.add_message(system_message);
+        
+        // Check if no one is left in call
+        let users_in_call: Vec<_> = party.users.values().filter(|u| u.is_in_call).collect();
+        if users_in_call.is_empty() {
+            party.is_call_active = false;
+            party.call_server_id = None;
+        }
+        
+        println!("✅ {} left the call", current_user.name);
+        
+        Ok(())
     } else {
-        Err("Room not found".to_string())
+        Err("Not currently in a party".to_string())
     }
 }
 
@@ -624,14 +549,14 @@ mod tests {
         
         // Add room to state
         {
-            let mut rooms = state.rooms.lock().await;
+            let mut rooms = state.current_party.lock().await;
             rooms.push(room);
         }
         
         println!("🧪 Testing generate_invite command with room ID: {}", room_id);
         
         // Test the invite generation logic directly
-        let rooms = state.rooms.lock().await;
+        let rooms = state.current_party.lock().await;
         let room = rooms.iter().find(|r| r.id.to_string() == room_id).unwrap();
         let current_user_guard = state.current_user.lock().await;
         let current_user = current_user_guard.as_ref().unwrap();
@@ -706,12 +631,12 @@ mod tests {
         room.peer_addresses = vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 47)), 8080)];
         
         {
-            let mut rooms = state.rooms.lock().await;
+            let mut rooms = state.current_party.lock().await;
             rooms.push(room);
         }
         
         // Test the invite generation logic directly
-        let rooms = state.rooms.lock().await;
+        let rooms = state.current_party.lock().await;
         let room = rooms.iter().find(|r| r.id.to_string() == existing_room_id).unwrap();
         let current_user_guard = state.current_user.lock().await;
         let current_user = current_user_guard.as_ref().unwrap();

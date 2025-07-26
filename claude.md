@@ -31,13 +31,14 @@ In the middle of page is a chat area where users can chat with each other, messa
 - Core priorities: party creation/management, user invites, server selection, sound I/O, web UI
 - Architecture: Local server approach with ZooKeeper-like leader election
 - UI Model: **CHANGED from multi-room Discord-like to simple party-focused interface**
+- **Session-based Model**: **NEW - Single party sessions only, no persistence**
 - Invite system: Encoded strings containing party info + user address
 - Framework: Rust backend + React frontend via Tauri webview
 - User Experience: Single party focus instead of multiple rooms
 - Technical decisions made:
   - Multiple protocol support: TCP, WebSocket, WebRTC with hot-switching
   - Ping measurement: Average of TCP connect time, application-level ping, WebRTC RTT  
-  - Data persistence: JSON files per party in app data directory
+  - **Data persistence**: **CHANGED to session-based only - no file persistence**
   - Voice: WebRTC implementation with mute/unmute controls
   - Invite system: Party ID + multiple peer addresses with ordered fallback
   - Framework: Tauri for Rust-React integration
@@ -50,12 +51,24 @@ In the middle of page is a chat area where users can chat with each other, messa
     - Fallback to any online user if no ping data available
     - Periodic health checks and cleanup of stale users/connections
     - Smart election prioritizing users with best ping among online users only
+- **Memory Management Changes**: 
+  - Always add changes notes to claude.md LLM section with dates and time (Added on 2024-03-20 at 15:45 UTC)
+  - **Session-Based Architecture Update** (Added on 2024-07-26 at 10:30 UTC)
+    - Removed multi-room support in favor of single party sessions
+    - Eliminated file persistence for party data
+    - Simplified backend state management with current_party instead of rooms vector
+    - Updated all Tauri commands to work with single party model
+    - Modified frontend to use new party-focused API endpoints
+    - Party data now exists only in memory during active session
 
 ## Implementation Status
 
 ### ✅ Completed Features
 - **Core Architecture**: Tauri-based desktop app with Rust backend and React frontend
-- **Party Management**: Single party focus - start/join parties via invite codes
+- **Session-Based Party Management**: **UPDATED** - Single party focus with session-only persistence
+  - Only one active party per application instance
+  - No file persistence - party exists only during session
+  - Party automatically cleared when leaving or closing app
 - **User Management**: 
   - Persistent user names (localStorage, first-time setup only)
   - User profiles with name, avatar, audio device settings
@@ -68,11 +81,12 @@ In the middle of page is a chat area where users can chat with each other, messa
   - Health checks and automatic re-election of offline servers
   - Smart selection prioritizing online users with fresh ping data
 - **Invite System**: Base64-encoded invite codes with party ID and peer addresses
-- **Data Persistence**: JSON-based party storage in app data directory
-  - **Party Files**: Each party saved as `{party-id}.json` in:
-    - macOS: `~/Library/Application Support/shortgap/rooms/`
-    - Linux: `~/.local/share/shortgap/rooms/`
-    - Windows: `%APPDATA%/shortgap/rooms/`
+- **Voice Call System**: 
+  - **Join/Leave Call**: Functional call state management with user tracking
+  - **Call Server Assignment**: Dynamic call server role assignment
+  - **Call Status Tracking**: Room-level call activity monitoring
+  - **System Messages**: Automatic notifications for call join/leave events
+  - **UI Integration**: Call buttons in chat header with proper state management
 - **Party-Focused UI**: 
   - **Name Input Screen**: First-time user name setup with persistent storage
   - **Welcome Screen**: Two large buttons - "Start a party" and "Join a party"
@@ -81,27 +95,34 @@ In the middle of page is a chat area where users can chat with each other, messa
   - **Settings Modal**: Audio device selection with voice check functionality
   - **Top Header**: User name display with party controls (copy invite, leave party)
   - **Control Buttons**: Mute/unmute and Settings buttons at bottom of party members list
+  - **Call Controls**: Join/Leave call buttons in chat area header
 - **UI Features**:
   - Material Icons integration for mute/unmute controls
   - Copy invite link button (replaces raw invite code display)
   - Minimum window size: 1020x600 pixels
   - Responsive layout with proper flex containers
+  - Prettier code formatting configuration
+- **Messaging System**:
+  - Real-time message display with timestamps
+  - System message support for call events
+  - Message persistence during session only
+  - Auto-scroll to latest messages
 - **Peer Discovery**: Fallback connection system with ordered peer lists
 
 ### 🚧 Pending Implementation
-- **WebRTC Voice Communication**: Voice chat functionality (architecture ready)
-- **Actual Network Protocol Implementation**: Currently has placeholder methods
-- **Real-time Message Synchronization**: Backend networking layer
-- **Voice Call UI**: Call controls and status indicators
+- **WebRTC Voice Communication**: Actual audio streaming implementation (infrastructure ready)
+- **Real Network Protocol Implementation**: TCP/WebSocket/WebRTC connection handling
+- **Real-time Message Synchronization**: Network-based message broadcasting between peers
+- **Voice Quality Controls**: Echo cancellation, noise suppression, volume controls
 
 ### 🏗️ Project Structure
 ```
 /ShortGap
 ├── src/                    # Rust backend
-│   ├── main.rs            # App entry point and state management
-│   ├── commands.rs        # Tauri command handlers for frontend
+│   ├── main.rs            # App entry point and UPDATED state management (single party)
+│   ├── commands.rs        # UPDATED Tauri command handlers for party-focused API
 │   ├── networking.rs      # Multi-protocol networking manager
-│   ├── room.rs           # Room data structures and persistence
+│   ├── room.rs           # Room data structures (reused for party)
 │   ├── user.rs           # User management
 │   ├── invite.rs         # Invite code generation/parsing
 │   ├── ping.rs           # Ping measurement and server selection
@@ -114,7 +135,7 @@ In the middle of page is a chat area where users can chat with each other, messa
 │   │   │   ├── Settings/  # User settings modal
 │   │   │   └── VoiceCheck/ # Voice testing component
 │   │   ├── styles/        # CSS modules
-│   │   └── App.tsx        # Main app component (party-focused)
+│   │   └── App.tsx        # UPDATED Main app component (party-focused)
 │   └── package.json       # Frontend dependencies
 ├── Cargo.toml            # Rust dependencies
 └── tauri.conf.json       # Tauri configuration
@@ -159,12 +180,11 @@ cargo check
 1. **Tauri Framework**: Chosen for native performance with web UI flexibility
 2. **Multi-Protocol Design**: Supports TCP, WebSocket, and WebRTC with runtime switching
 3. **Peer-to-Peer Model**: Decentralized with dynamic server role assignment
-4. **JSON Persistence**: Simple file-based storage for room data
+4. **Session-Based Storage**: **UPDATED** - Simple memory-based party storage (no file persistence)
 5. **CSS Modules**: Component-scoped styling for maintainable UI
 
 ### Security Considerations
 - Invite codes are base64-encoded but not encrypted (consider adding encryption)
-- Local file permissions needed for app data directory
 - Network protocols should implement authentication in production
 
 ### Performance Features
@@ -195,7 +215,7 @@ cargo check
 
 #### Backend Process
 1. **User Initialization**: Uses saved name from localStorage
-2. **Party Creation**: `create_room()` command called via Tauri bridge (reuses room backend)
+2. **Party Creation**: `create_party()` command called via Tauri bridge
 3. **Party Object**: New `Room` struct created with:
    - Unique UUID
    - Default name "Party"
@@ -203,8 +223,8 @@ cargo check
    - Empty messages list
    - TCP protocol (default)
 4. **Invite Generation**: Auto-generates invite code
-5. **File Persistence**: Party saved as JSON to app data directory
-6. **State Update**: Party added to in-memory state
+5. **Session Storage**: **UPDATED** - Party stored only in memory (no file persistence)
+6. **State Update**: Party set as current_party in app state
 7. **UI Update**: Full party interface rendered
 
 ### Party Members Display
@@ -218,16 +238,15 @@ cargo check
 ### Messaging System
 #### Sending Messages
 1. User types message in chat input
-2. `send_message()` command sends to backend
-3. Message saved to party's message list
-4. File automatically updated with new message
-5. UI refreshes to show new message immediately
+2. `send_message()` command sends to backend (no roomId parameter needed)
+3. Message added to current party's message list
+4. UI refreshes to show new message immediately
 
 #### Message Synchronization
 1. **Party Context**: Messages automatically sync within current party
 2. **Message Ordering**: Backend sorts all messages by timestamp
-3. **Persistence**: Updated message order saved to party file
-4. **UI Update**: Chat area displays sorted message history
+3. **Session Persistence**: **UPDATED** - Messages persist only during active session
+4. **UI Update**: Chat area displays message history
 5. **Real-time Updates**: Party members see messages immediately
 
 #### Message Structure
@@ -237,46 +256,23 @@ cargo check
 - **Timestamp**: Local time with date/time display
 - **Auto-scroll**: Chat scrolls to newest messages
 
-### Party File Structure
-```json
-{
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "name": "Party",
-  "creator_id": "550e8400-e29b-41d4-a716-446655440001",
-  "users": {
-    "550e8400-e29b-41d4-a716-446655440001": {
-      "id": "550e8400-e29b-41d4-a716-446655440001",
-      "name": "Alice",
-      "address": "192.168.1.100:8080",
-      "is_online": true
-    },
-    "550e8400-e29b-41d4-a716-446655440002": {
-      "id": "550e8400-e29b-41d4-a716-446655440002",
-      "name": "Alice-2",
-      "address": "192.168.1.101:8080",
-      "is_online": true
-    }
-  },
-  "messages": [
-    {
-      "id": "msg-123",
-      "user_id": "550e8400-e29b-41d4-a716-446655440001",
-      "user_name": "Alice",
-      "content": "Hello everyone!",
-      "timestamp": "2024-01-20T10:35:00Z"
-    }
-  ],
-  "server_user_id": "550e8400-e29b-41d4-a716-446655440001",
-  "protocol": "TCP",
-  "peer_addresses": ["192.168.1.100:8080", "192.168.1.101:8080"],
-  "created_at": "2024-01-20T10:30:00Z",
-  "is_voice_enabled": false
-}
-```
-
 ### Current UI Layout
 - **Top Header**: User name, Copy invite link, Leave party buttons
 - **Left Sidebar**: Party members list with mute/settings controls at bottom
-- **Main Area**: Full-height chat interface
+- **Chat Area Header**: Room name, member count, protocol info, and Join/Leave call button
+- **Main Chat**: Full-height message interface with real-time updates
+- **Message Input**: Send messages with auto-scroll to latest
 - **Welcome Screen**: Two large buttons when not in party
 - **Name Input**: First-time setup screen with persistent storage
+
+### Recent Updates (July 2025)
+- ✅ **Call System Integration**: Complete join/leave call functionality with UI
+- ✅ **Message System**: Full message persistence and display with system notifications
+- ✅ **Code Quality**: Added Prettier formatting configuration
+- ✅ **UI Polish**: Enhanced chat area with proper call controls and status display
+- ✅ **State Management**: Improved party state synchronization and error handling
+- ✅ **Session-Based Architecture**: **NEW** - Removed multi-room logic for single party sessions
+  - Simplified backend from rooms vector to single current_party
+  - Updated all API endpoints to work without roomId parameters
+  - Removed file persistence in favor of session-only storage
+  - Enhanced user experience with cleaner party-focused workflow

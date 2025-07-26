@@ -7,14 +7,17 @@ interface PartyMembersProps {
   party: Party
   currentUser: User | null
   isMuted: boolean
-  isInCall: boolean
   onToggleMute: () => void
-  onJoinCall: () => void
-  onLeaveCall: () => void
   onOpenSettings: () => void
 }
 
-function PartyMembers({ party, currentUser, isMuted, isInCall, onToggleMute, onJoinCall, onLeaveCall, onOpenSettings }: PartyMembersProps) {
+function PartyMembers({
+  party,
+  currentUser,
+  isMuted,
+  onToggleMute,
+  onOpenSettings,
+}: PartyMembersProps) {
   const members = Object.values(party.users)
 
   return (
@@ -23,18 +26,16 @@ function PartyMembers({ party, currentUser, isMuted, isInCall, onToggleMute, onJ
         <h3>Party Members</h3>
         <span className={styles.memberCount}>{members.length}</span>
       </div>
-      
+
       <div className={styles.membersList}>
-        {members.map((member) => (
+        {members.map(member => (
           <div key={member.id} className={styles.member}>
             <div className={styles.memberInfo}>
               <div className={styles.avatar}>
                 {member.avatar ? (
                   <img src={member.avatar} alt={member.name} />
                 ) : (
-                  <div className={styles.defaultAvatar}>
-                    {member.name.charAt(0).toUpperCase()}
-                  </div>
+                  <div className={styles.defaultAvatar}>{member.name.charAt(0).toUpperCase()}</div>
                 )}
               </div>
               <div className={styles.memberDetails}>
@@ -45,36 +46,27 @@ function PartyMembers({ party, currentUser, isMuted, isInCall, onToggleMute, onJ
                   )}
                 </span>
                 <div className={styles.memberStatus}>
-                  <div className={`${styles.statusDot} ${member.isOnline ? styles.online : styles.offline}`} />
+                  <div
+                    className={`${styles.statusDot} ${member.isOnline ? styles.online : styles.offline}`}
+                  />
                 </div>
               </div>
             </div>
           </div>
         ))}
       </div>
-      
+
       <div className={styles.controlButtons}>
-        <button 
-          className={`${styles.callButton} ${isInCall ? styles.inCall : styles.notInCall}`}
-          onClick={isInCall ? onLeaveCall : onJoinCall}
-        >
-          {isInCall ? 'Leave call' : 'Join call'}
+        <button className={styles.settingsButton} onClick={onOpenSettings}>
+          ⚙️ Settings
         </button>
-        <div className={styles.bottomRow}>
-          <button 
-            className={styles.settingsButton} 
-            onClick={onOpenSettings}
-          >
-            ⚙️ Settings
-          </button>
-          <button 
-            className={`${styles.muteButton} ${isMuted ? styles.muted : ''}`} 
-            onClick={onToggleMute}
-            title={isMuted ? 'Unmute' : 'Mute'}
-          >
-            {isMuted ? <MicOffIcon /> : <MicIcon />}
-          </button>
-        </div>
+        <button
+          className={`${styles.muteButton} ${isMuted ? styles.muted : ''}`}
+          onClick={onToggleMute}
+          title={isMuted ? 'Unmute' : 'Mute'}
+        >
+          {isMuted ? <MicOffIcon /> : <MicIcon />}
+        </button>
       </div>
     </div>
   )
