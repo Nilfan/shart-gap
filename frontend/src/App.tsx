@@ -61,7 +61,7 @@ function App() {
     if (savedName) {
       initializeUser(savedName)
     }
-    
+
     // Get user IP address
     const fetchUserIP = async () => {
       try {
@@ -71,9 +71,48 @@ function App() {
         console.error('Failed to get user IP:', error)
       }
     }
-    
+
     fetchUserIP()
   }, [])
+
+  // Real-time message synchronization effect
+  useEffect(() => {
+    if (!currentParty) return
+
+    console.log('🔄 Starting real-time sync for party:', currentParty.id)
+
+    // Set up periodic refresh for real-time message synchronization
+    const syncInterval = setInterval(async () => {
+      try {
+        const updatedParty = await invoke<Party | null>('get_current_party')
+        if (updatedParty) {
+          // Only update if there are new messages or changes
+          const currentMessageCount = currentParty.messages?.length || 0
+          const newMessageCount = updatedParty.messages?.length || 0
+
+          if (newMessageCount > currentMessageCount) {
+            console.log(`📨 Received ${newMessageCount - currentMessageCount} new messages`)
+          }
+
+          if (
+            newMessageCount > currentMessageCount ||
+            JSON.stringify(updatedParty.users) !== JSON.stringify(currentParty.users)
+          ) {
+            console.log('📨 New messages or user changes detected, updating UI')
+            setCurrentParty({ ...updatedParty, invite_code: currentParty.invite_code })
+          }
+        }
+      } catch (error) {
+        console.error('Failed to sync party state:', error)
+      }
+    }, 1000) // Sync every 1 second for real-time experience
+
+    // Cleanup interval on unmount or party change
+    return () => {
+      console.log('🛑 Stopping real-time sync for party:', currentParty.id)
+      clearInterval(syncInterval)
+    }
+  }, [currentParty?.id]) // Re-run when party changes
 
   const initializeUser = async (name: string) => {
     try {
@@ -117,30 +156,30 @@ function App() {
 
   const handleJoinParty = async (inviteCode: string) => {
     if (!inviteCode.trim()) return
-    
+
     setIsJoining(true)
     setJoinStatus('Validating invite code...')
-    
+
     try {
       // First validate the invite
       const validationResult = await invoke<string>('validate_invite', { inviteCode })
       console.log('Invite validation:', validationResult)
       setJoinStatus('Invite valid! Connecting to party...')
-      
+
       // Small delay to show validation message
       await new Promise(resolve => setTimeout(resolve, 1000))
-      
+
       // Attempt to join with timeout
       setJoinStatus('Establishing connection...')
-      
+
       // Add timeout to the join operation
       const joinPromise = invoke<Party>('join_party', { inviteCode })
-      const timeoutPromise = new Promise<never>((_, reject) => 
+      const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('Join operation timed out after 30 seconds')), 30000)
       )
-      
+
       const joinedParty = await Promise.race([joinPromise, timeoutPromise])
-      
+
       setJoinStatus('Connected! Joining party...')
       setCurrentParty(joinedParty)
       setShowJoinModal(false)
@@ -150,22 +189,27 @@ function App() {
       console.error('Failed to join party:', error)
       setJoinStatus('')
       const errorMessage = error instanceof Error ? error.message : String(error)
-      
+
       // Provide helpful troubleshooting for common network errors
       let helpMessage = ''
-      if (errorMessage.includes('No route to host') || errorMessage.includes('Connection refused')) {
-        helpMessage = '\n\n🛠️ Troubleshooting tips:\n' +
+      if (
+        errorMessage.includes('No route to host') ||
+        errorMessage.includes('Connection refused')
+      ) {
+        helpMessage =
+          '\n\n🛠️ Troubleshooting tips:\n' +
           '• Check if both devices are on the same WiFi network\n' +
           '• Ensure firewall allows port 8080 connections\n' +
           '• Try disabling firewall temporarily to test\n' +
-          '• Make sure the party creator\'s app is still running'
+          "• Make sure the party creator's app is still running"
       } else if (errorMessage.includes('timeout')) {
-        helpMessage = '\n\n🛠️ Troubleshooting tips:\n' +
+        helpMessage =
+          '\n\n🛠️ Troubleshooting tips:\n' +
           '• Check network connection stability\n' +
           '• Ensure the party creator is still online\n' +
           '• Try getting a fresh invite code'
       }
-      
+
       alert(`Failed to join party: ${errorMessage}${helpMessage}`)
     } finally {
       setIsJoining(false)
@@ -377,19 +421,15 @@ function App() {
               placeholder='Enter invite code'
               disabled={isJoining}
             />
-            {joinStatus && (
-              <div className={styles.statusMessage}>
-                {joinStatus}
-              </div>
-            )}
+            {joinStatus && <div className={styles.statusMessage}>{joinStatus}</div>}
             <div className={styles.modalButtons}>
-              <button 
-                onClick={() => handleJoinParty(inviteCode)} 
+              <button
+                onClick={() => handleJoinParty(inviteCode)}
                 disabled={!inviteCode.trim() || isJoining}
               >
                 {isJoining ? 'Joining...' : 'Join'}
               </button>
-              <button 
+              <button
                 onClick={() => {
                   if (!isJoining) {
                     setShowJoinModal(false)

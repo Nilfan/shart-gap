@@ -239,14 +239,21 @@ impl NetworkManager {
         let message_bytes = serialized.as_bytes();
         let length = message_bytes.len() as u32;
         
-        println!("📡 Broadcasting message type {:?} to {} peers", message.message_type, self.connections.len());
+        // Get active stream count for accurate logging
+        let stream_count = {
+            let streams = self.tcp_streams.lock().await;
+            streams.len()
+        };
+        
+        println!("📡 Broadcasting message type {:?} to {} active streams (connections: {})",
+                 message.message_type, stream_count, self.connections.len());
         
         // Log the message content if it's a chat message
         if matches!(message.message_type, MessageType::ChatMessage) {
             if let Ok(chat_message) = serde_json::from_value::<crate::room::ChatMessage>(message.payload.clone()) {
-                println!("📤 Sending chat message: [{}] {}: {}", 
-                    chat_message.timestamp.format("%H:%M:%S"), 
-                    chat_message.user_name, 
+                println!("📤 BROADCASTING chat message: [{}] {}: {}",
+                    chat_message.timestamp.format("%H:%M:%S"),
+                    chat_message.user_name,
                     chat_message.content);
             }
         }
@@ -257,11 +264,32 @@ impl NetworkManager {
             streams.keys().cloned().collect()
         };
         
+        if peer_ids.is_empty() {
+            println!("⚠️ No active TCP streams available for broadcasting");
+            return Ok(());
+        }
+        
+        let mut successful_sends = 0;
+        let mut failed_sends = 0;
+        
         for peer_id in peer_ids {
             // Send message to each peer individually
-            if let Err(e) = self.send_to_peer(&peer_id, message.clone()).await {
-                eprintln!("❌ Failed to send message to peer {}: {}", peer_id, e);
+            match self.send_to_peer(&peer_id, message.clone()).await {
+                Ok(_) => {
+                    successful_sends += 1;
+                    println!("✅ Successfully sent message to peer {}", peer_id);
+                }
+                Err(e) => {
+                    failed_sends += 1;
+                    eprintln!("❌ Failed to send message to peer {}: {}", peer_id, e);
+                }
             }
+        }
+        
+        println!("📊 Broadcast complete: {} successful, {} failed", successful_sends, failed_sends);
+        
+        if successful_sends == 0 && failed_sends > 0 {
+            return Err(anyhow::anyhow!("Failed to send message to any peers"));
         }
         
         Ok(())
@@ -272,24 +300,35 @@ impl NetworkManager {
         message_sender: mpsc::UnboundedSender<NetworkMessage>,
         peer_id: String,
     ) {
-        let mut stream = {
-            let mut streams = tcp_streams.lock().await;
-            if let Some(stream) = streams.remove(&peer_id) {
-                stream
-            } else {
-                return;
-            }
-        };
-        
         println!("🎧 Started listening for messages from peer {}", peer_id);
         
         loop {
-            // Read message length
-            match stream.read_u32().await {
+            // Get a mutable reference to the stream without removing it
+            let read_result = {
+                let mut streams = tcp_streams.lock().await;
+                if let Some(stream) = streams.get_mut(&peer_id) {
+                    stream.read_u32().await
+                } else {
+                    println!("❌ Stream for peer {} not found, stopping handler", peer_id);
+                    break;
+                }
+            };
+
+            match read_result {
                 Ok(length) => {
                     // Read message data
                     let mut buffer = vec![0u8; length as usize];
-                    match stream.read_exact(&mut buffer).await {
+                    let read_exact_result = {
+                        let mut streams = tcp_streams.lock().await;
+                        if let Some(stream) = streams.get_mut(&peer_id) {
+                            stream.read_exact(&mut buffer).await
+                        } else {
+                            println!("❌ Stream for peer {} not found during read, stopping handler", peer_id);
+                            break;
+                        }
+                    };
+
+                    match read_exact_result {
                         Ok(_) => {
                             match String::from_utf8(buffer) {
                                 Ok(json_str) => {
@@ -322,6 +361,13 @@ impl NetworkManager {
                     break;
                 }
             }
+        }
+
+        // Clean up the stream when the handler exits
+        {
+            let mut streams = tcp_streams.lock().await;
+            streams.remove(&peer_id);
+            println!("🧹 Cleaned up stream for disconnected peer {}", peer_id);
         }
         
         println!("👋 Stopped listening to peer {}", peer_id);
